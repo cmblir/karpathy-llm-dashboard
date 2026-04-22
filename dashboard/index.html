@@ -61,8 +61,8 @@ button{cursor:pointer;transition:all var(--d-fast) var(--ease);}
 button:active{transform:scale(0.97);}
 
 /* ── Layout ── */
-.app{display:grid;grid-template-columns:var(--side-w) 1fr;grid-template-rows:52px 1fr;height:100vh;position:relative}
-.app.side-hidden{grid-template-columns:0 1fr}
+.app{display:grid;grid-template-columns:var(--side-w) 1fr;grid-template-rows:52px 1fr;height:100vh;position:relative;transition:grid-template-columns var(--d-med) var(--ease)}
+.app.side-hidden{--side-w:0px}
 .app.side-hidden .side{display:none}
 
 /* 사이드바 리사이즈 핸들 */
@@ -140,14 +140,35 @@ header h1 .logo-mark span{transform:rotate(-45deg);color:var(--text)}
 
 /* ── Main ── */
 main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
-.toolbar{display:flex;align-items:center;padding:10px 18px;border-bottom:1px solid var(--border);gap:6px;flex-wrap:wrap;background:var(--bg)}
-.toolbar button,.toolbar select{padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:var(--r-md);color:var(--muted);font-size:12px;transition:all var(--d-fast);font-weight:500}
-.toolbar button:hover{color:var(--text);border-color:var(--border2);background:var(--bg3);transform:translateY(-1px)}
-.toolbar button.on{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:600}
-.toolbar button.on:hover{transform:translateY(0);background:var(--text)}
-.toolbar .sep{width:1px;height:16px;background:var(--border)}
-.toolbar .bc{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.toolbar{display:flex;align-items:center;padding:8px 18px;border-bottom:1px solid var(--border);gap:4px;background:var(--bg);position:relative;z-index:20}
+.toolbar .bc{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;max-width:50%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .toolbar .bc b{color:var(--text);font-weight:600}
+
+/* ── 카테고리 드롭다운 ── */
+.cat{position:relative}
+.cat-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:transparent;border:1px solid transparent;border-radius:var(--r-md);color:var(--text2);font-size:13px;font-weight:500;transition:all var(--d-fast)}
+.cat-btn .cat-icon{font-size:11px;opacity:.7;font-family:var(--mono)}
+.cat-btn .cat-caret{font-size:9px;opacity:.5;transition:transform var(--d-fast)}
+.cat-btn:hover{background:var(--bg3);color:var(--text);border-color:var(--border)}
+.cat-btn:hover .cat-caret{opacity:1}
+.cat.open .cat-btn{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+.cat.open .cat-caret{transform:rotate(180deg);opacity:1}
+.cat.has-active .cat-btn{color:var(--text);background:var(--bg3);border-color:var(--border2)}
+.cat.has-active .cat-btn::before{content:'';position:absolute;top:-1px;left:8px;right:8px;height:2px;background:var(--text);border-radius:0 0 2px 2px}
+
+.cat-menu{position:absolute;top:calc(100% + 4px);left:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r-md);min-width:220px;padding:6px;box-shadow:var(--shadow-lg);z-index:100;display:none;animation:menu-pop var(--d-med) var(--ease)}
+.cat.open .cat-menu{display:block}
+@keyframes menu-pop{from{opacity:0;transform:translateY(-4px) scale(0.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.cat-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;color:var(--text2);font-size:13px;transition:all var(--d-fast);background:transparent;border:none;width:100%;text-align:left;position:relative}
+.cat-item:hover{background:var(--bg3);color:var(--text);padding-left:14px}
+.cat-item.active{background:var(--bg3);color:var(--text);font-weight:500}
+.cat-item.active::before{content:'';position:absolute;left:4px;top:50%;transform:translateY(-50%);width:3px;height:16px;background:var(--text);border-radius:2px}
+.cat-item .ci-icon{font-family:var(--mono);font-size:12px;width:16px;text-align:center;opacity:.7;flex-shrink:0}
+.cat-item:hover .ci-icon,.cat-item.active .ci-icon{opacity:1}
+.cat-item .ci-label{flex:1}
+.cat-item .ci-sub{font-size:10px;color:var(--muted2);margin-left:auto;font-family:var(--mono);letter-spacing:-0.02em}
+.cat-sep{height:1px;background:var(--border);margin:4px 0}
+.cat-header{padding:6px 12px 4px;font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:0.06em;font-weight:700}
 
 .content{flex:1;overflow-y:auto;position:relative;scroll-behavior:smooth}
 .content > *{animation:fade-in var(--d-slow) var(--ease)}
@@ -390,32 +411,12 @@ main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
   </aside>
   <main>
     <div class="idx-banner" id="idxBanner"><span id="idxBannerText"></span><button class="idx-close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
-    <div class="toolbar">
-      <button class="on" data-v="page" data-i18n="nav_page">Page</button>
-      <button data-v="ingest" data-i18n="nav_ingest">+ Ingest</button>
-      <button data-v="query" data-i18n="nav_query">Query</button>
-      <button data-v="lint" data-i18n="nav_lint">Lint</button>
-      <button data-v="reflect" id="reflectBtn" data-i18n="nav_reflect">Reflect</button>
-      <button data-v="write" data-i18n="nav_write">Write</button>
-      <button data-v="compare" data-i18n="nav_compare">Compare</button>
-      <button data-v="review" data-i18n="nav_review">Review</button>
-      <button data-v="search" data-i18n="nav_search">Search</button>
-      <button data-v="graph" data-i18n="nav_graph">Graph</button>
-      <button data-v="history" data-i18n="nav_history">History</button>
-      <button data-v="provenance" data-i18n="nav_provenance">Provenance</button>
-      <div class="sep"></div>
-      <button onclick="showCreateFolder()" data-i18n="nav_folder">+ Folder</button>
-      <button onclick="showCreatePage()" data-i18n="nav_new_page">+ Page</button>
-      <div class="sep"></div>
-      <button data-v="schema" style="border-color:var(--orange);color:var(--orange)">CLAUDE.md</button>
-      <button data-v="guide" style="border-color:var(--purple);color:var(--purple)" data-i18n="nav_guide">? Guide</button>
-      <span class="bc" id="bc"></span>
-    </div>
+    <div class="toolbar" id="toolbar"></div>
     <div class="content" id="content"></div>
   </main>
+  <div class="side-handle" id="sideHandle"></div>
 </div>
 
-<div class="side-handle" id="sideHandle"></div>
 <div class="toast-wrap" id="toastWrap"></div>
 
 <!-- Modals -->
@@ -508,6 +509,7 @@ const I18N={
     last_updated:'Updated',
     type_source:'Source', type_entity:'Entity', type_concept:'Concept',
     type_comparison:'Comparison', type_analysis:'Analysis', type_overview:'Overview',
+    cat_work:'Work', cat_analyze:'Analyze', cat_browse:'Browse', cat_create:'Create', cat_more:'More',
     wr_tip_suffix:'(last {n} queries)',
     confirm_revert_specific:'Revert "{name}"? Files created by this ingest will be removed and modified files will be restored.',
     revert_fail:'Revert failed: ',
@@ -605,6 +607,7 @@ const I18N={
     last_updated:'갱신일',
     type_source:'소스', type_entity:'엔티티', type_concept:'개념',
     type_comparison:'비교', type_analysis:'분석', type_overview:'개요',
+    cat_work:'작업', cat_analyze:'분석', cat_browse:'탐색', cat_create:'만들기', cat_more:'더보기',
   },
 };
 let LANG=localStorage.getItem('karpathy-lang')||'en';
@@ -619,7 +622,24 @@ function applyI18n(){
   });
   var btn=document.getElementById('langToggle'); if(btn)btn.textContent=LANG==='en'?'한국어':'EN';
 }
-function toggleLang(){LANG=LANG==='en'?'ko':'en';localStorage.setItem('karpathy-lang',LANG);applyI18n();if(curFolder)showFolderView(curFolder);else if(cur)showPage(cur);else if(view==='ingest')showIngest();else if(view==='query')showQuery();else if(view==='lint')showLint();else if(view==='reflect')showReflect();else if(view==='write')showWrite();else if(view==='compare')showCompare();else if(view==='review')showReview();else if(view==='search')showSearch();else if(view==='history')showHistory();else if(view==='provenance')showProvenance();else if(view==='guide')showGuide();else if(view==='schema')showSchema();}
+function toggleLang(){
+  LANG=LANG==='en'?'ko':'en';localStorage.setItem('karpathy-lang',LANG);
+  applyI18n();renderToolbar();
+  if(curFolder)showFolderView(curFolder);
+  else if(cur)showPage(cur);
+  else if(view==='ingest')showIngest();
+  else if(view==='query')showQuery();
+  else if(view==='lint')showLint();
+  else if(view==='reflect')showReflect();
+  else if(view==='write')showWrite();
+  else if(view==='compare')showCompare();
+  else if(view==='review')showReview();
+  else if(view==='search')showSearch();
+  else if(view==='history')showHistory();
+  else if(view==='provenance')showProvenance();
+  else if(view==='guide')showGuide();
+  else if(view==='schema')showSchema();
+}
 
 // ─── Toast ───
 function toast(msg,type){type=type||'info';
@@ -633,13 +653,19 @@ function toast(msg,type){type=type||'info';
 var SIDE_W_KEY='karpathy-side-w', SIDE_HIDDEN_KEY='karpathy-side-hidden';
 function applySidebar(){
   var app=document.getElementById('app');
-  var w=parseInt(localStorage.getItem(SIDE_W_KEY))||280;
-  w=Math.max(220,Math.min(500,w));
-  document.documentElement.style.setProperty('--side-w',w+'px');
   var hidden=localStorage.getItem(SIDE_HIDDEN_KEY)==='1';
   app.classList.toggle('side-hidden',hidden);
-  var handle=document.getElementById('sideHandle');
-  if(handle)handle.style.left=w+'px';
+  if(!hidden){
+    var w=parseInt(localStorage.getItem(SIDE_W_KEY))||280;
+    w=Math.max(220,Math.min(500,w));
+    // .app 자체에 inline으로 설정 (--side-w는 .side-hidden이 override 가능)
+    app.style.setProperty('--side-w',w+'px');
+    var handle=document.getElementById('sideHandle');
+    if(handle)handle.style.left=w+'px';
+  }else{
+    var handle=document.getElementById('sideHandle');
+    if(handle)handle.style.left='';
+  }
 }
 function toggleSidebar(){
   var hidden=localStorage.getItem(SIDE_HIDDEN_KEY)==='1';
@@ -648,20 +674,24 @@ function toggleSidebar(){
 }
 function initSidebarResize(){
   var handle=document.getElementById('sideHandle');if(!handle)return;
+  var app=document.getElementById('app');
   var dragging=false;
   handle.addEventListener('mousedown',function(e){
+    // 사이드바가 숨겨진 상태에서는 드래그 비활성
+    if(app.classList.contains('side-hidden'))return;
     dragging=true;handle.classList.add('dragging');document.body.style.cursor='ew-resize';document.body.style.userSelect='none';
+    e.preventDefault();
   });
   document.addEventListener('mousemove',function(e){
     if(!dragging)return;
     var w=Math.max(220,Math.min(500,e.clientX));
-    document.documentElement.style.setProperty('--side-w',w+'px');
+    app.style.setProperty('--side-w',w+'px');
     handle.style.left=w+'px';
   });
   document.addEventListener('mouseup',function(e){
     if(!dragging)return;
     dragging=false;handle.classList.remove('dragging');document.body.style.cursor='';document.body.style.userSelect='';
-    var w=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--side-w'))||280;
+    var w=parseInt(getComputedStyle(app).getPropertyValue('--side-w'))||280;
     localStorage.setItem(SIDE_W_KEY,w);
   });
 }
@@ -714,7 +744,7 @@ marked.setOptions({renderer});
 
 // ─── Init ───
 async function init(){
-  applyI18n();applySidebar();initSidebarResize();
+  applyI18n();applySidebar();initSidebarResize();renderToolbar();
   await Promise.all([loadWiki(),loadFolders(),checkStatus(),loadSettings()]);
   render();
   setInterval(checkStatus,15000);setInterval(pollChanges,5000);checkReflectStatus();
@@ -839,7 +869,7 @@ function renderLog(el){if(!D.log.length){el.innerHTML='<div style="padding:30px;
   el.innerHTML=[...D.log].reverse().map(e=>`<div class="log-item"><span class="date">${e.date}</span><span class="badge b-${e.action}">${e.action}</span>${esc(e.title)}</div>`).join('');}
 
 // ─── Views ───
-function setView(v){view=v;editing=false;document.querySelectorAll('.toolbar button[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));}
+function setView(v){view=v;editing=false;renderToolbar();}
 
 // ─── Folder view (연속된 페이지) ───
 function showFolderView(folderPath){
@@ -1822,10 +1852,82 @@ async function doCreatePage(){
   if(d.filename)showPage(d.filename);
 }
 
-// ─── Events ───
-document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));renderSidebar();});
-document.querySelectorAll('.toolbar button[data-v]').forEach(b=>b.onclick=()=>{
-  const v=b.dataset.v;
+// ─── 툴바 카테고리 ───
+var CATEGORIES=[
+  {id:'work',icon:'▶',i18n:'cat_work',items:[
+    {v:'ingest',icon:'＋',i18n:'nav_ingest',sub:'I'},
+    {v:'query',icon:'?',i18n:'nav_query',sub:'Q'},
+    {v:'write',icon:'✎',i18n:'nav_write',sub:'W'},
+    {v:'compare',icon:'⇔',i18n:'nav_compare',sub:'C'},
+  ]},
+  {id:'analyze',icon:'◉',i18n:'cat_analyze',items:[
+    {v:'lint',icon:'✓',i18n:'nav_lint'},
+    {v:'reflect',icon:'◈',i18n:'nav_reflect'},
+    {v:'review',icon:'◌',i18n:'nav_review'},
+    {v:'provenance',icon:'§',i18n:'nav_provenance'},
+  ]},
+  {id:'browse',icon:'◎',i18n:'cat_browse',items:[
+    {v:'search',icon:'⌕',i18n:'nav_search',sub:'/'},
+    {v:'graph',icon:'❋',i18n:'nav_graph'},
+    {v:'history',icon:'⟲',i18n:'nav_history'},
+  ]},
+  {id:'create',icon:'＋',i18n:'cat_create',items:[
+    {action:'folder',icon:'▢',i18n:'nav_folder'},
+    {action:'page',icon:'▤',i18n:'nav_new_page'},
+  ]},
+  {id:'more',icon:'⋯',i18n:'cat_more',items:[
+    {v:'schema',icon:'⚙',label:'CLAUDE.md'},
+    {v:'guide',icon:'?',i18n:'nav_guide'},
+  ]},
+];
+
+function renderToolbar(){
+  var tb=document.getElementById('toolbar');if(!tb)return;
+  var h='';
+  CATEGORIES.forEach(function(cat){
+    var hasActive=cat.items.some(function(it){return it.v===view;});
+    h+='<div class="cat'+(hasActive?' has-active':'')+'" data-cat="'+cat.id+'">';
+    h+='<button class="cat-btn" onclick="toggleCat(\''+cat.id+'\')" aria-haspopup="true">';
+    h+='<span class="cat-icon">'+cat.icon+'</span>';
+    h+='<span>'+t(cat.i18n)+'</span>';
+    h+='<span class="cat-caret">▾</span>';
+    h+='</button>';
+    h+='<div class="cat-menu" role="menu">';
+    cat.items.forEach(function(it){
+      var label=it.i18n?t(it.i18n):(it.label||it.v);
+      var active=it.v===view?' active':'';
+      var handler=it.action==='folder'?'showCreateFolder()':it.action==='page'?'showCreatePage()':'navTo(\''+it.v+'\')';
+      h+='<button class="cat-item'+active+'" onclick="closeCats();'+handler+'">';
+      h+='<span class="ci-icon">'+it.icon+'</span>';
+      h+='<span class="ci-label">'+esc(label)+'</span>';
+      if(it.sub)h+='<span class="ci-sub">'+it.sub+'</span>';
+      h+='</button>';
+    });
+    h+='</div></div>';
+  });
+  h+='<span class="bc" id="bc"></span>';
+  tb.innerHTML=h;
+}
+
+function toggleCat(id){
+  var els=document.querySelectorAll('.cat');
+  els.forEach(function(el){
+    if(el.dataset.cat===id)el.classList.toggle('open');
+    else el.classList.remove('open');
+  });
+}
+function closeCats(){
+  document.querySelectorAll('.cat').forEach(function(el){el.classList.remove('open');});
+}
+// 외부 클릭 시 드롭다운 닫기
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.cat'))closeCats();
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape')closeCats();
+});
+
+function navTo(v){
   if(v==='graph')showGraph();
   else if(v==='ingest')showIngest();
   else if(v==='query')showQuery();
@@ -1839,8 +1941,11 @@ document.querySelectorAll('.toolbar button[data-v]').forEach(b=>b.onclick=()=>{
   else if(v==='provenance')showProvenance();
   else if(v==='schema')showSchema();
   else if(v==='guide')showGuide();
-  else if(cur)showPage(cur);
-});
+  renderToolbar();
+}
+
+// ─── Events ───
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));renderSidebar();});
 document.getElementById('q').oninput=e=>{sq=e.target.value;if(tab!=='pages'){tab='pages';document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.t==='pages'));}renderSidebar();};
 document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)closeModals();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModals();});
