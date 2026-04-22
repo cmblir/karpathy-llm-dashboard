@@ -11,6 +11,7 @@ import json, os, re, shutil, subprocess, sys, time, threading, urllib.parse
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from provenance import build_provenance_graph
+from index_strategy import get_strategy, get_index_instruction, rebuild_index
 from pathlib import Path
 
 PORT = 8090
@@ -420,8 +421,10 @@ def do_ingest(title, content, folder=""):
     ts = datetime.now().strftime("%Y-%m-%d-%H%M")
     report_path = f"ingest-reports/{ts}-{slug}.md"
     folder_inst = f" wiki/{folder}/ 폴더 하위에 페이지를 생성해." if folder else ""
+    idx_inst = get_index_instruction(WIKI_DIR)
 
-    prompt = f"""Ingest raw/{slug}.md — 이 소스를 읽고 CLAUDE.md 지침대로 wiki 페이지들을 생성/갱신해. 핵심 내용 논의는 생략하고 바로 실행해.{folder_inst}
+    prompt = f"""{idx_inst}
+Ingest raw/{slug}.md — 이 소스를 읽고 CLAUDE.md 지침대로 wiki 페이지들을 생성/갱신해. 핵심 내용 논의는 생략하고 바로 실행해.{folder_inst}
 
 작업이 끝나면:
 1. 마지막에 왜 이런 판단을 했는지 3~5줄로 요약해 (REASONING: 으로 시작).
@@ -435,6 +438,10 @@ def do_ingest(title, content, folder=""):
 - [[a]] ↔ [[b]]"""
 
     ok, out, err = run_claude(prompt)
+
+    # 2.5) 인덱스 재빌드 (전략에 따라)
+    if ok:
+        rebuild_index(WIKI_DIR)
 
     # 3) 스냅샷 after + diff
     snap_after = _snapshot_wiki()
@@ -465,7 +472,9 @@ def do_ingest(title, content, folder=""):
 
 
 def do_query(question):
-    prompt = f"""다음 질문에 답해. wiki/index.md를 먼저 읽고 관련 wiki 페이지를 찾아 읽은 뒤 답변을 합성해.
+    idx_inst = get_index_instruction(WIKI_DIR)
+    prompt = f"""다음 질문에 답해. {idx_inst}
+관련 wiki 페이지를 찾아 읽은 뒤 답변을 합성해.
 답변에 관련 위키 페이지를 [[wikilink]]로 인용해.
 질문: {question}"""
     ok, answer, err, files_read, token_usage = run_claude_tracked(prompt)
@@ -540,7 +549,9 @@ def do_fix_citations(page_filename):
 
 def do_lint():
     today = datetime.now().strftime("%Y-%m-%d")
-    prompt = f"""CLAUDE.md의 "Lint 체크리스트" 섹션을 읽고 wiki 전체를 점검해.
+    idx_inst = get_index_instruction(WIKI_DIR)
+    prompt = f"""{idx_inst}
+CLAUDE.md의 "Lint 체크리스트" 섹션을 읽고 wiki 전체를 점검해.
 
 아래 체크리스트를 **모두** 수행:
 
@@ -678,6 +689,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(build_provenance_graph(WIKI_DIR))
         if path == "/api/query-stats":
             return self._json(_get_query_stats())
+        if path == "/api/index/status":
+            return self._json(get_strategy(WIKI_DIR))
         super().do_GET()
 
     def do_POST(self):
@@ -711,6 +724,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(git_mgr.revert_ingest(body.get("commit_hash", "")))
         if path == "/api/provenance/fix":
             return self._json(do_fix_citations(body.get("page", "")))
+        if path == "/api/index/rebuild":
+            result = rebuild_index(WIKI_DIR)
+            if result["ok"]:
+                git_mgr._stage_all()
+                git_mgr._run("commit", "-m", f"index: rebuild ({result['mode']})")
+            return self._json(result)
         self.send_error(404)
 
     def _read_body(self):

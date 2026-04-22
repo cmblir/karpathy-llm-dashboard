@@ -109,6 +109,15 @@ main{display:flex;flex-direction:column;overflow:hidden}
 .modal .actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .modal .actions button.danger{background:var(--red);border-color:var(--red);color:#fff}
 
+/* Index strategy banner */
+.idx-banner{padding:6px 16px;font-size:12px;border-bottom:1px solid var(--border);display:none;align-items:center;gap:8px}
+.idx-banner.show{display:flex}
+.idx-banner.warn{background:#d2992215;color:var(--orange)}
+.idx-banner.danger{background:#f8514915;color:var(--red)}
+.idx-banner .idx-close{margin-left:auto;background:none;border:none;color:inherit;cursor:pointer;font-size:14px}
+.idx-badge{font-size:11px;padding:1px 6px;border-radius:4px;font-weight:600;font-family:var(--mono)}
+.idx-flat{background:#3fb95022;color:var(--green)}.idx-hierarchical{background:#58a6ff22;color:var(--accent)}.idx-indexed{background:#f8514922;color:var(--red)}
+
 /* Wiki ratio gauge */
 .wr-gauge{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);position:relative;cursor:default}
 .wr-bar{width:48px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
@@ -198,6 +207,7 @@ main{display:flex;flex-direction:column;overflow:hidden}
     </div>
   </aside>
   <main>
+    <div class="idx-banner" id="idxBanner"><span id="idxBannerText"></span><button class="idx-close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
     <div class="toolbar">
       <button class="on" data-v="page">Page</button>
       <button data-v="ingest">+ Ingest</button>
@@ -279,8 +289,31 @@ function setDot(did,lid,ok,txt){document.getElementById(did).className='status-d
 function render(){if(!D)return;renderStats();renderSidebar();if(!cur){const ov=D.pages.find(p=>p.filename==='overview.md');if(ov)showPage('overview.md');else showGuide();}}
 function renderStats(){
   var s=D.stats;
-  document.getElementById('hstats').innerHTML='<span class="live-dot"></span><span><b>'+s.total_pages+'</b> pages</span><span><b>'+s.raw_sources+'</b> sources</span><span><b>'+s.total_links+'</b> links</span><span id="wrGauge" class="wr-gauge"></span>';
+  document.getElementById('hstats').innerHTML='<span class="live-dot"></span><span><b>'+s.total_pages+'</b> pages</span><span><b>'+s.raw_sources+'</b> sources</span><span><b>'+s.total_links+'</b> links</span><span id="idxStatus"></span><span id="wrGauge" class="wr-gauge"></span>';
   loadWikiRatio();
+  loadIndexStatus();
+}
+async function loadIndexStatus(){
+  try{
+    var r=await fetch('/api/index/status');var d=await r.json();
+    var el=document.getElementById('idxStatus');if(!el)return;
+    var badge='<span class="idx-badge idx-'+d.mode+'">'+d.mode+'</span>';
+    var txt=d.page_count;
+    if(d.next_threshold)txt+='/'+d.next_threshold;
+    el.innerHTML=badge+' <span style="font-size:11px;color:var(--muted)">'+txt+'</span>';
+    // 배너
+    var banner=document.getElementById('idxBanner');
+    var bannerText=document.getElementById('idxBannerText');
+    if(d.warning){
+      banner.className='idx-banner show danger';
+      bannerText.textContent=d.warning;
+    }else if(d.proximity_warning){
+      banner.className='idx-banner show warn';
+      bannerText.textContent=d.proximity_warning;
+    }else{
+      banner.className='idx-banner';
+    }
+  }catch(e){}
 }
 async function loadWikiRatio(){
   try{
