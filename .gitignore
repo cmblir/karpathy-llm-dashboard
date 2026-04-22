@@ -8,5 +8,8 @@ Thumbs.db
 .obsidian/plugins/
 .trash/
 
+# Build artifacts
+dashboard/data.json
+
 # Claude Code
 .claude/
