@@ -13,8 +13,6 @@ All wiki pages, organized by type. Updated on every ingest.
 
 ## Overview
 - [[overview]] — wiki scope and current state
-## Sources
-- [[source-karpathy-llm-wiki-2|Karpathy: LLM Wiki 2 — 소스 요약]]
 ## Entities
 - [[andrej-karpathy|Andrej Karpathy]]
 - [[ashish-vaswani|Ashish Vaswani]]
