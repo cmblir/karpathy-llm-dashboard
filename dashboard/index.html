@@ -109,6 +109,22 @@ main{display:flex;flex-direction:column;overflow:hidden}
 .modal .actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .modal .actions button.danger{background:var(--red);border-color:var(--red);color:#fff}
 
+/* Citation badges */
+.cite-badge{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-dim);padding:0 5px;border-radius:8px;cursor:pointer;vertical-align:super;line-height:1.4;margin:0 1px;position:relative}
+.cite-badge:hover{background:var(--accent);color:#fff}
+.cite-tip{display:none;position:absolute;bottom:120%;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:400;white-space:nowrap;color:var(--text);z-index:50;pointer-events:none}
+.cite-badge:hover .cite-tip{display:block}
+
+/* Provenance table */
+.prov-table{width:100%;border-collapse:collapse;font-size:13px}
+.prov-table th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.prov-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.prov-table tr:hover td{background:var(--bg3)}
+.prov-page{color:var(--accent);cursor:pointer}.prov-page:hover{text-decoration:underline}
+.prov-bar{display:inline-block;height:6px;border-radius:3px;min-width:4px}
+.prov-cov{font-variant-numeric:tabular-nums;font-weight:600}
+.prov-low{color:var(--red)}.prov-mid{color:var(--orange)}.prov-high{color:var(--green)}
+
 /* Ingest result panel */
 .ir-panel{max-width:960px;margin:0 auto;padding:24px 32px}
 .ir-split{display:grid;grid-template-columns:240px 1fr;gap:16px;min-height:350px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
@@ -172,6 +188,7 @@ main{display:flex;flex-direction:column;overflow:hidden}
       <button data-v="lint">Lint</button>
       <button data-v="graph">Graph</button>
       <button data-v="history">History</button>
+      <button data-v="provenance">Provenance</button>
       <div class="sep"></div>
       <button onclick="showCreateFolder()">+ Folder</button>
       <button onclick="showCreatePage()">+ Page</button>
@@ -278,12 +295,29 @@ function showPage(fn){
   const p=D.pages.find(x=>x.filename===fn);if(!p){document.getElementById('content').innerHTML=`<div style="padding:40px;text-align:center;color:var(--muted)">Page not found: ${esc(fn)}</div>`;return;}
   document.getElementById('bc').innerHTML=`<b>${esc(p.title)}</b> · ${p.type} · ${p.updated||p.created}`;
   let body=p.content.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g,'[$2]($1.md)').replace(/\[\[([^\]]+)\]\]/g,'[$1]($1.md)');
-  const html=marked.parse(body);const c=TC[p.type]||'var(--muted)';
-  const tags=p.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('');
-  const isSys=['index.md','log.md','overview.md'].includes(fn);
-  const actions=`<div class="page-actions"><button onclick="editPage('${fn}')">Edit</button>${isSys?'':`<button class="danger" onclick="showDeleteModal('${fn}','${esc(p.title)}')">Delete</button>`}</div>`;
-  document.getElementById('content').innerHTML=`<div class="page"><div class="pmeta"><span class="tbadge" style="background:${c}22;color:${c}">${p.type}</span>${tags}${actions}</div><div class="md">${html}</div></div>`;
-  document.querySelectorAll('.md a').forEach(a=>{const h=a.getAttribute('href');if(h&&h.endsWith('.md')&&!h.includes('://')){a.onclick=e=>{e.preventDefault();showPage(h);};a.style.cursor='pointer';}});
+  // citation [^src-*] → 렌더 후 처리할 마커로 변환
+  var citeMap={},citeN=0;
+  body=body.replace(/\[\^(src-[a-z0-9-]+)\](?!:)/g,function(m,slug){
+    if(!citeMap[slug])citeMap[slug]=++citeN;
+    return '%%CITE:'+slug+'%%';
+  });
+  // citation 정의 줄 제거 (하단 footnote 줄)
+  body=body.replace(/^\[\^src-[a-z0-9-]+\]:.*$/gm,'');
+  var html=marked.parse(body);
+  // 마커 → 배지 HTML
+  html=html.replace(/%%CITE:([a-z0-9-]+)%%/g,function(m,slug){
+    var n=citeMap[slug]||'?';
+    var srcPage='source-'+slug.replace('src-','');
+    var srcData=D.pages.find(function(pp){return pp.filename===srcPage+'.md';});
+    var tipText=srcData?srcData.title:srcPage;
+    return '<span class="cite-badge" onclick="showPage(\''+srcPage+'.md\')">'+n+'<span class="cite-tip">'+esc(tipText)+'</span></span>';
+  });
+  var c=TC[p.type]||'var(--muted)';
+  var tags=p.tags.map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join('');
+  var isSys=['index.md','log.md','overview.md'].indexOf(fn)>=0;
+  var actions='<div class="page-actions"><button onclick="editPage(\''+fn+'\')">Edit</button>'+(isSys?'':'<button class="danger" onclick="showDeleteModal(\''+fn+'\',\''+esc(p.title).replace(/'/g,"\\'")+'\')">Delete</button>')+'</div>';
+  document.getElementById('content').innerHTML='<div class="page"><div class="pmeta"><span class="tbadge" style="background:'+c+'22;color:'+c+'">'+p.type+'</span>'+tags+actions+'</div><div class="md">'+html+'</div></div>';
+  document.querySelectorAll('.md a').forEach(function(a){var h=a.getAttribute('href');if(h&&h.endsWith('.md')&&h.indexOf('://')<0){a.onclick=function(e){e.preventDefault();showPage(h);};a.style.cursor='pointer';}});
   renderSidebar();
 }
 
@@ -508,6 +542,64 @@ async function doLintFix(){
   }catch(e){res.className='result-box err';res.textContent='Network error: '+e.message;}
 }
 
+// ─── Provenance ───
+async function showProvenance(){
+  setView('provenance');cur=null;
+  document.getElementById('bc').innerHTML='<b>Provenance</b> · Citation 커버리지';
+  document.getElementById('content').innerHTML='<div class="panel"><h2>Citation Provenance</h2><p class="desc">Loading...</p></div>';
+  try{
+    var r=await fetch('/api/provenance');var list=await r.json();
+    var h='<div class="panel"><h2>Citation Provenance</h2>';
+    h+='<p class="desc">각 위키 페이지의 claim 중 inline citation [^src-*]이 있는 비율입니다. Source 타입 페이지는 제외됩니다.</p>';
+    if(!list.length){
+      h+='<p style="color:var(--muted);padding:20px 0">분석 대상 페이지가 없습니다.</p>';
+    }else{
+      h+='<table class="prov-table"><thead><tr><th>Page</th><th>Claims</th><th>Cited</th><th>Coverage</th><th style="width:120px">Bar</th><th></th></tr></thead><tbody>';
+      for(var i=0;i<list.length;i++){
+        var e=list[i];
+        var cls=e.coverage<30?'prov-low':e.coverage<70?'prov-mid':'prov-high';
+        var barW=Math.max(4,Math.round(e.coverage));
+        var barColor=e.coverage<30?'var(--red)':e.coverage<70?'var(--orange)':'var(--green)';
+        h+='<tr>';
+        h+='<td><span class="prov-page" onclick="showPage(\''+e.page+'\')">'+esc(e.page.replace('.md',''))+'</span></td>';
+        h+='<td>'+e.total_claims+'</td>';
+        h+='<td>'+e.cited_claims+'</td>';
+        h+='<td class="prov-cov '+cls+'">'+e.coverage+'%</td>';
+        h+='<td><span class="prov-bar" style="width:'+barW+'px;background:'+barColor+'"></span></td>';
+        h+='<td>';
+        if(e.total_claims>0&&e.coverage<100){
+          h+='<button class="btn btn-outline" style="font-size:11px;padding:2px 8px" onclick="fixCitations(\''+e.page+'\')">Fix</button>';
+        }
+        h+='</td>';
+        h+='</tr>';
+      }
+      h+='</tbody></table>';
+    }
+    h+='<div id="provResult"></div></div>';
+    document.getElementById('content').innerHTML=h;
+  }catch(e){
+    document.getElementById('content').innerHTML='<div class="panel"><p class="desc" style="color:var(--red)">Error: '+e.message+'</p></div>';
+  }
+}
+
+async function fixCitations(page){
+  var res=document.getElementById('provResult');
+  if(!res)return;
+  res.className='result-box info';res.textContent='Claude가 '+page+' citation을 보완 중...';
+  try{
+    var r=await fetch('/api/provenance/fix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({page:page})});
+    var d=await r.json();
+    if(d.ok){
+      res.className='result-box ok';res.innerHTML='<div class="md">'+marked.parse(d.output||'Done.')+'</div>';
+      await Promise.all([loadWiki(),loadFolders()]);renderStats();renderSidebar();
+      // 테이블 갱신
+      setTimeout(function(){showProvenance();},500);
+    }else{
+      res.className='result-box err';res.textContent='Error: '+d.error;
+    }
+  }catch(e){res.className='result-box err';res.textContent='Network error: '+e.message;}
+}
+
 // ─── History ───
 async function showHistory(){
   setView('history');cur=null;
@@ -728,7 +820,7 @@ async function doCreatePage(){const t=document.getElementById('newPageTitle').va
 // ─── Events ───
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));renderSidebar();});
 document.querySelectorAll('.toolbar button[data-v]').forEach(b=>b.onclick=()=>{
-  const v=b.dataset.v;if(v==='graph')showGraph();else if(v==='ingest')showIngest();else if(v==='query')showQuery();else if(v==='lint')showLint();else if(v==='history')showHistory();else if(v==='schema')showSchema();else if(v==='guide')showGuide();else if(cur)showPage(cur);});
+  const v=b.dataset.v;if(v==='graph')showGraph();else if(v==='ingest')showIngest();else if(v==='query')showQuery();else if(v==='lint')showLint();else if(v==='history')showHistory();else if(v==='provenance')showProvenance();else if(v==='schema')showSchema();else if(v==='guide')showGuide();else if(cur)showPage(cur);});
 document.getElementById('q').oninput=e=>{sq=e.target.value;if(tab!=='pages'){tab='pages';document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.t==='pages'));}renderSidebar();};
 document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)closeModals();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModals();});
