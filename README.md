@@ -25,10 +25,11 @@ That's it. Obsidian settings, graph colors, and hotkeys are pre-configured.
 
 ### UI / UX
 
-- **Black & white design** — monochrome palette for focused reading, minimal color except for status/diff signals.
-- **Interactive** — hover/focus animations, smooth transitions, toast notifications.
-- **Resizable sidebar** — drag the right edge to adjust width (220–500px), or press **Cmd/Ctrl + B** to toggle.
-- **Folder view** — click a folder name in the tree to read all its pages continuously in one scroll, with a floating scroll-spy navigator.
+- **Black & white design** — monochrome palette for focused reading; color is reserved for status and diff signals only.
+- **Categorized toolbar** — 13 operations grouped into 5 dropdowns: **Work** (Ingest/Query/Write/Compare), **Analyze** (Lint/Reflect/Review/Provenance), **Browse** (Search/Graph/History), **Create** (+ Folder/+ Page), **More** (CLAUDE.md/Guide). Active view is highlighted on the parent category.
+- **Interactive** — hover/focus animations, smooth transitions, toast notifications, dropdown pop animations.
+- **Resizable sidebar** — drag the right edge (220–500px), or press **Cmd/Ctrl + B** to collapse. Width persists in `localStorage`.
+- **Folder view** — click a folder *name* in the tree to read all its pages continuously in one scroll, with a floating scroll-spy. (Click the arrow to just expand/collapse.)
 - **Model selector** — top-left dropdown to pick Claude model (Opus 4.7 / Sonnet 4.6 / Haiku 4.5 / Default).
 
 ### Languages
