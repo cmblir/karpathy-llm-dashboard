@@ -35,6 +35,103 @@ if not _claude:
 CLAUDE_TOOLS = "Edit,Write,Read,Glob,Grep"
 CLAUDE_TIMEOUT = 180
 
+
+# ─── GitManager ───
+
+class GitManager:
+    def __init__(self):
+        self.root = str(PROJECT_ROOT)
+        # git repo가 아니면 초기화
+        if not (PROJECT_ROOT / ".git").is_dir():
+            self._run("init")
+            self._run("add", "-A")
+            self._run("commit", "-m", "init: wiki bootstrap")
+
+    def _run(self, *args):
+        r = subprocess.run(
+            ["git"] + list(args),
+            capture_output=True, text=True, cwd=self.root,
+        )
+        return r
+
+    def _stage_all(self):
+        """wiki/ + raw/ 변경사항 스테이징"""
+        self._run("add", "wiki/", "raw/")
+
+    def commit_ingest(self, source_name):
+        """ingest 완료 후 커밋. commit hash 반환."""
+        self._stage_all()
+        # 변경이 없으면 스킵
+        status = self._run("diff", "--cached", "--name-only")
+        files = [f for f in status.stdout.strip().split("\n") if f]
+        if not files:
+            return {"hash": None, "files": []}
+        msg = f"ingest: {source_name}"
+        self._run("commit", "-m", msg)
+        log = self._run("log", "-1", "--format=%H")
+        return {"hash": log.stdout.strip(), "files": files}
+
+    def commit_query_save(self, question):
+        self._stage_all()
+        msg = f"query: {question[:80]}"
+        self._run("commit", "-m", msg)
+        log = self._run("log", "-1", "--format=%H")
+        return log.stdout.strip()
+
+    def commit_lint_fix(self):
+        self._stage_all()
+        msg = "lint: auto-fix"
+        self._run("commit", "-m", msg)
+        log = self._run("log", "-1", "--format=%H")
+        return log.stdout.strip()
+
+    def list_ingests(self, limit=50):
+        """ingest: 커밋만 추출 → [{hash, source, date, files_changed}]"""
+        log = self._run(
+            "log", f"--max-count={limit}", "--format=%H|%s|%aI",
+            "--grep=^ingest:", "--extended-regexp",
+        )
+        results = []
+        for line in log.stdout.strip().split("\n"):
+            if not line or "|" not in line:
+                continue
+            parts = line.split("|", 2)
+            if len(parts) < 3:
+                continue
+            h, subject, date = parts
+            # 변경 파일 수
+            stat = self._run("diff-tree", "--no-commit-id", "--name-only", "-r", h)
+            files = [f for f in stat.stdout.strip().split("\n") if f]
+            source = subject.replace("ingest: ", "", 1)
+            results.append({
+                "hash": h,
+                "hash_short": h[:8],
+                "source": source,
+                "date": date[:19].replace("T", " "),
+                "files_changed": len(files),
+                "files": files,
+            })
+        return results
+
+    def revert_ingest(self, commit_hash):
+        """해당 커밋만 revert (git revert --no-edit)"""
+        # 안전: ingest 커밋인지 확인
+        log = self._run("log", "-1", "--format=%s", commit_hash)
+        subject = log.stdout.strip()
+        if not subject.startswith("ingest:"):
+            return {"ok": False, "error": f"Not an ingest commit: {subject}"}
+        r = self._run("revert", "--no-edit", commit_hash)
+        if r.returncode != 0:
+            # conflict 발생 시
+            self._run("revert", "--abort")
+            return {"ok": False, "error": f"Revert conflict: {r.stderr[:300]}"}
+        new_log = self._run("log", "-1", "--format=%H|%s")
+        parts = new_log.stdout.strip().split("|", 1)
+        return {"ok": True, "revert_hash": parts[0], "message": parts[1] if len(parts) > 1 else ""}
+
+
+git_mgr = GitManager()
+
 # ─── helpers ───
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -183,7 +280,11 @@ def do_ingest(title, content, folder=""):
     folder_inst = f" wiki/{folder}/ 폴더 하위에 페이지를 생성해." if folder else ""
     prompt = f"Ingest raw/{slug}.md — 이 소스를 읽고 CLAUDE.md 지침대로 wiki 페이지들을 생성/갱신해. 핵심 내용 논의는 생략하고 바로 실행해.{folder_inst}"
     ok, out, err = run_claude(prompt)
-    return {"ok": ok, "raw_file": f"raw/{slug}.md", "claude_output": out, "error": err}
+    # 자동 커밋
+    commit = {"hash": None, "files": []}
+    if ok:
+        commit = git_mgr.commit_ingest(title)
+    return {"ok": ok, "raw_file": f"raw/{slug}.md", "claude_output": out, "error": err, "commit": commit}
 
 
 def do_query(question):
@@ -215,6 +316,7 @@ tags:
     # index, log 갱신은 claude에게 맡김
     prompt = f"wiki/{slug}.md 페이지를 방금 생성했다. wiki/index.md의 Analyses 섹션에 이 페이지를 추가하고, wiki/log.md에 query 로그를 남기고, wiki/overview.md 통계를 갱신해."
     run_claude(prompt)
+    git_mgr.commit_query_save(title)
     return {"ok": True, "filename": f"{slug}.md"}
 
 
@@ -240,6 +342,8 @@ def do_lint_fix():
 - index.md, log.md, overview.md 갱신
 수정한 내용을 요약해서 보고해."""
     ok, out, err = run_claude(prompt)
+    if ok:
+        git_mgr.commit_lint_fix()
     return {"ok": ok, "result": out, "error": err}
 
 
@@ -313,6 +417,8 @@ class Handler(SimpleHTTPRequestHandler):
             schema_path = PROJECT_ROOT / "CLAUDE.md"
             content = schema_path.read_text("utf-8") if schema_path.exists() else ""
             return self._json({"ok": True, "content": content})
+        if path == "/api/history":
+            return self._json(git_mgr.list_ingests())
         super().do_GET()
 
     def do_POST(self):
@@ -342,6 +448,8 @@ class Handler(SimpleHTTPRequestHandler):
             schema_path = PROJECT_ROOT / "CLAUDE.md"
             schema_path.write_text(body.get("content", ""), encoding="utf-8")
             return self._json({"ok": True})
+        if path == "/api/revert":
+            return self._json(git_mgr.revert_ingest(body.get("commit_hash", "")))
         self.send_error(404)
 
     def _read_body(self):
