@@ -185,6 +185,105 @@ def run_claude(prompt):
         return (False, "", "claude CLI not found")
 
 
+def run_claude_tracked(prompt):
+    """claude -p를 stream-json으로 실행하여 Read 호출을 추적.
+    → (ok, answer, error, files_read, token_usage)"""
+    try:
+        r = subprocess.run(
+            ["claude", "-p", "--allowedTools", CLAUDE_TOOLS,
+             "--output-format", "stream-json", "--verbose", prompt],
+            capture_output=True, text=True, timeout=CLAUDE_TIMEOUT,
+            cwd=str(PROJECT_ROOT),
+        )
+    except subprocess.TimeoutExpired:
+        return (False, "", f"Claude CLI timeout ({CLAUDE_TIMEOUT}s)", [], {})
+    except FileNotFoundError:
+        return (False, "", "claude CLI not found", [], {})
+
+    files_read = []
+    answer = ""
+    token_usage = {}
+
+    for line in r.stdout.strip().split("\n"):
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        # Read tool result → filePath 추출
+        if evt.get("type") == "user":
+            msg = evt.get("message", {})
+            tur = evt.get("tool_use_result")
+            if tur and isinstance(tur, dict):
+                fp = tur.get("file", {}).get("filePath", "")
+                if fp:
+                    # 프로젝트 상대경로로 변환
+                    try:
+                        rel = str(Path(fp).relative_to(PROJECT_ROOT))
+                    except ValueError:
+                        rel = fp
+                    if rel not in files_read:
+                        files_read.append(rel)
+            # content 배열에서도 탐색 (tool_result)
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_result":
+                        # 이건 이미 위에서 처리
+                        pass
+
+        # result 이벤트 → answer + usage
+        if evt.get("type") == "result":
+            answer = evt.get("result", "")
+            token_usage = {
+                "input_tokens": evt.get("usage", {}).get("input_tokens", 0),
+                "output_tokens": evt.get("usage", {}).get("output_tokens", 0),
+                "cost_usd": evt.get("total_cost_usd", 0),
+            }
+
+    ok = r.returncode == 0
+    return (ok, answer[:4000], r.stderr[:500] if not ok else "", files_read, token_usage)
+
+
+QUERY_LOG = PROJECT_ROOT / "query-log.jsonl"
+
+
+def _log_query(question, files_read, wiki_ratio, answer_length):
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "question": question[:200],
+        "files_read": files_read,
+        "wiki_ratio": wiki_ratio,
+        "answer_length": answer_length,
+    }
+    with open(QUERY_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _get_query_stats(n=20):
+    """최근 n개 쿼리의 wiki_ratio 평균"""
+    if not QUERY_LOG.exists():
+        return {"avg_wiki_ratio": None, "count": 0}
+    lines = QUERY_LOG.read_text("utf-8").strip().split("\n")
+    recent = []
+    for line in reversed(lines):
+        if not line:
+            continue
+        try:
+            recent.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+        if len(recent) >= n:
+            break
+    if not recent:
+        return {"avg_wiki_ratio": None, "count": 0}
+    ratios = [e["wiki_ratio"] for e in recent if e.get("wiki_ratio") is not None]
+    avg = sum(ratios) / len(ratios) if ratios else 0
+    return {"avg_wiki_ratio": round(avg, 3), "count": len(recent)}
+
+
 # ─── wiki data ───
 
 def build_wiki_data():
@@ -369,8 +468,25 @@ def do_query(question):
     prompt = f"""다음 질문에 답해. wiki/index.md를 먼저 읽고 관련 wiki 페이지를 찾아 읽은 뒤 답변을 합성해.
 답변에 관련 위키 페이지를 [[wikilink]]로 인용해.
 질문: {question}"""
-    ok, out, err = run_claude(prompt)
-    return {"ok": ok, "answer": out, "error": err}
+    ok, answer, err, files_read, token_usage = run_claude_tracked(prompt)
+
+    # wiki_ratio 계산
+    wiki_files = [f for f in files_read if f.startswith("wiki/")]
+    raw_files = [f for f in files_read if f.startswith("raw/")]
+    total = len(files_read)
+    wiki_ratio = len(wiki_files) / total if total > 0 else 0.0
+
+    # 로그 기록
+    _log_query(question, files_read, round(wiki_ratio, 3), len(answer))
+
+    return {
+        "ok": ok, "answer": answer, "error": err,
+        "files_read": files_read,
+        "wiki_files": len(wiki_files),
+        "raw_files": len(raw_files),
+        "wiki_ratio": round(wiki_ratio, 3),
+        "token_usage": token_usage,
+    }
 
 
 def do_query_save(title, content):
@@ -560,6 +676,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(git_mgr.list_ingests())
         if path == "/api/provenance":
             return self._json(build_provenance_graph(WIKI_DIR))
+        if path == "/api/query-stats":
+            return self._json(_get_query_stats())
         super().do_GET()
 
     def do_POST(self):

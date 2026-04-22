@@ -109,6 +109,23 @@ main{display:flex;flex-direction:column;overflow:hidden}
 .modal .actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .modal .actions button.danger{background:var(--red);border-color:var(--red);color:#fff}
 
+/* Wiki ratio gauge */
+.wr-gauge{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);position:relative;cursor:default}
+.wr-bar{width:48px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.wr-fill{height:100%;border-radius:3px;transition:width .3s}
+.wr-val{font-weight:600;font-variant-numeric:tabular-nums;min-width:32px}
+.wr-tip{display:none;position:absolute;top:120%;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;white-space:nowrap;z-index:50;color:var(--text)}
+.wr-gauge:hover .wr-tip{display:block}
+
+/* Query files read */
+.qf-summary{font-size:13px;color:var(--muted);margin:10px 0 6px;display:flex;align-items:center;gap:8px}
+.qf-summary b{color:var(--text)}
+.qf-toggle{font-size:11px;color:var(--accent);cursor:pointer;border:none;background:none;font-family:var(--font)}
+.qf-toggle:hover{text-decoration:underline}
+.qf-list{font-size:12px;font-family:var(--mono);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:10px;max-height:200px;overflow-y:auto;display:none}
+.qf-list.show{display:block}
+.qf-list .qf-wiki{color:var(--accent)}.qf-list .qf-raw{color:var(--orange)}.qf-list .qf-other{color:var(--muted)}
+
 /* Citation badges */
 .cite-badge{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-dim);padding:0 5px;border-radius:8px;cursor:pointer;vertical-align:super;line-height:1.4;margin:0 1px;position:relative}
 .cite-badge:hover{background:var(--accent);color:#fff}
@@ -260,7 +277,22 @@ function setDot(did,lid,ok,txt){document.getElementById(did).className='status-d
 
 // ─── Render ───
 function render(){if(!D)return;renderStats();renderSidebar();if(!cur){const ov=D.pages.find(p=>p.filename==='overview.md');if(ov)showPage('overview.md');else showGuide();}}
-function renderStats(){const s=D.stats;document.getElementById('hstats').innerHTML=`<span class="live-dot"></span><span><b>${s.total_pages}</b> pages</span><span><b>${s.raw_sources}</b> sources</span><span><b>${s.total_links}</b> links</span>`;}
+function renderStats(){
+  var s=D.stats;
+  document.getElementById('hstats').innerHTML='<span class="live-dot"></span><span><b>'+s.total_pages+'</b> pages</span><span><b>'+s.raw_sources+'</b> sources</span><span><b>'+s.total_links+'</b> links</span><span id="wrGauge" class="wr-gauge"></span>';
+  loadWikiRatio();
+}
+async function loadWikiRatio(){
+  try{
+    var r=await fetch('/api/query-stats');var d=await r.json();
+    var el=document.getElementById('wrGauge');if(!el)return;
+    if(d.avg_wiki_ratio===null){el.innerHTML='';return;}
+    var v=d.avg_wiki_ratio;var pct=Math.round(v*100);
+    var color=v>=0.7?'var(--green)':v>=0.4?'var(--orange)':'var(--red)';
+    var tip=v>=0.7?'위키가 주요 지식 소스로 잘 작동하고 있습니다.':v>=0.4?'위키와 raw를 혼합 참조 중. Ingest 추가를 고려하세요.':'위키가 raw를 대체하지 못하고 있음. Ingest 품질을 점검하세요.';
+    el.innerHTML='Wiki <span class="wr-val" style="color:'+color+'">'+pct+'%</span><div class="wr-bar"><div class="wr-fill" style="width:'+pct+'%;background:'+color+'"></div></div><span class="wr-tip">'+tip+' (최근 '+d.count+'개 쿼리)</span>';
+  }catch(e){}
+}
 function renderSidebar(){const el=document.getElementById('slist');if(tab==='tree')renderTree(el);else if(tab==='pages')renderPageList(el);else renderLog(el);}
 
 function renderTree(el){
@@ -491,18 +523,42 @@ function showQuery(){
     <div id="queryResult"></div><div id="querySave" style="display:none"></div></div>`;
 }
 async function doQuery(){
-  const q=document.getElementById('queryInput').value.trim();if(!q){alert('질문을 입력하세요.');return;}
-  const btn=document.getElementById('queryBtn'),res=document.getElementById('queryResult'),sv=document.getElementById('querySave');
+  var q=document.getElementById('queryInput').value.trim();if(!q){alert('질문을 입력하세요.');return;}
+  var btn=document.getElementById('queryBtn'),res=document.getElementById('queryResult'),sv=document.getElementById('querySave');
   btn.disabled=true;btn.textContent='Thinking...';res.className='result-box info';res.textContent='Claude가 위키를 검색 중...';sv.style.display='none';
-  try{const r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});const d=await r.json();
+  try{
+    var r=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    var d=await r.json();
     if(d.ok){
-      let answer=d.answer.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g,'[$2]($1.md)').replace(/\[\[([^\]]+)\]\]/g,'[$1]($1.md)');
-      res.className='result-box ok';res.innerHTML='<div class="md">'+marked.parse(answer)+'</div>';
+      var answer=d.answer.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g,'[$2]($1.md)').replace(/\[\[([^\]]+)\]\]/g,'[$1]($1.md)');
+
+      // files read summary
+      var fr=d.files_read||[];
+      var wf=d.wiki_files||0;var rf=d.raw_files||0;
+      var ratioColor=d.wiki_ratio>=0.7?'var(--green)':d.wiki_ratio>=0.4?'var(--orange)':'var(--red)';
+      var filesHtml='<div class="qf-summary">이 답변은 <b style="color:var(--accent)">wiki '+wf+'개</b> + <b style="color:var(--orange)">raw '+rf+'개</b> 파일을 읽어 생성';
+      filesHtml+=' · Wiki Ratio <b style="color:'+ratioColor+'">'+Math.round(d.wiki_ratio*100)+'%</b>';
+      if(fr.length>0) filesHtml+=' <button class="qf-toggle" onclick="this.parentElement.nextElementSibling.classList.toggle(\'show\')">파일 목록 '+(fr.length)+'</button>';
+      filesHtml+='</div>';
+      if(fr.length>0){
+        filesHtml+='<div class="qf-list">';
+        fr.forEach(function(f){
+          var cls=f.indexOf('wiki/')===0?'qf-wiki':f.indexOf('raw/')===0?'qf-raw':'qf-other';
+          filesHtml+='<div class="'+cls+'">'+esc(f)+'</div>';
+        });
+        filesHtml+='</div>';
+      }
+
+      res.className='result-box ok';
+      res.innerHTML=filesHtml+'<div class="md">'+marked.parse(answer)+'</div>';
       // wikilinks in answer
-      res.querySelectorAll('.md a').forEach(a=>{const h=a.getAttribute('href');if(h&&h.endsWith('.md')&&!h.includes('://')){a.onclick=e=>{e.preventDefault();showPage(h);};a.style.cursor='pointer';}});
+      res.querySelectorAll('.md a').forEach(function(a){var h=a.getAttribute('href');if(h&&h.endsWith('.md')&&h.indexOf('://')<0){a.onclick=function(e){e.preventDefault();showPage(h);};a.style.cursor='pointer';}});
       // save button
-      sv.style.display='block';sv.innerHTML=`<div style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="text" id="saveTitle" placeholder="페이지 제목 (예: Self-Attention 분석)" style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px"><button class="btn btn-outline" onclick="doQuerySave()">위키에 저장</button></div>`;
+      sv.style.display='block';
+      sv.innerHTML='<div style="margin-top:12px;display:flex;gap:8px;align-items:center"><input type="text" id="saveTitle" placeholder="페이지 제목 (예: Self-Attention 분석)" style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px"><button class="btn btn-outline" onclick="doQuerySave()">위키에 저장</button></div>';
       window._lastAnswer=d.answer;
+      // update header gauge
+      loadWikiRatio();
     }else{res.className='result-box err';res.textContent='Error: '+d.error;}
   }catch(e){res.className='result-box err';res.textContent='Network error: '+e.message;}
   btn.disabled=false;btn.textContent='Ask Claude';
