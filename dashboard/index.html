@@ -286,7 +286,7 @@ async function loadFolders(){try{const r=await fetch('/api/folders');folders=awa
 async function checkStatus(){
   try{const r=await fetch('/api/status');const s=await r.json();
     setDot('dotClaude','lblClaude',s.claude.connected,s.claude.connected?s.claude.version:'disconnected');
-    setDot('dotObsidian','lblObsidian',s.obsidian.connected,s.obsidian.connected?'running':'not running');
+    setDot('dotObsidian','lblObsidian',s.obsidian.connected,s.obsidian.message||(s.obsidian.connected?'connected':'disconnected'));
   }catch(e){setDot('dotClaude','lblClaude',false,'server error');setDot('dotObsidian','lblObsidian',false,'server error');}
 }
 async function pollChanges(){
@@ -610,10 +610,19 @@ async function doQuery(){
   btn.disabled=false;btn.textContent='Ask Claude';
 }
 async function doQuerySave(){
-  const title=document.getElementById('saveTitle').value.trim();if(!title){alert('제목을 입력하세요.');return;}
-  const r=await fetch('/api/query/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,content:window._lastAnswer||''})});
-  const d=await r.json();
-  if(d.ok){await Promise.all([loadWiki(),loadFolders()]);renderStats();renderSidebar();showPage(d.filename);}
+  var title=document.getElementById('saveTitle').value.trim();if(!title){alert('제목을 입력하세요.');return;}
+  var btn=document.querySelector('#querySave button');
+  if(btn){btn.disabled=true;btn.textContent='저장 중...';}
+  try{
+    var r=await fetch('/api/query/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:title,content:window._lastAnswer||''})});
+    var d=await r.json();
+    if(d.ok&&d.filename){
+      await Promise.all([loadWiki(),loadFolders()]);renderStats();renderSidebar();showPage(d.filename);
+    }else{
+      alert('저장 실패: '+(d.error||'알 수 없는 오류'));
+    }
+  }catch(e){alert('Network error: '+e.message);}
+  if(btn){btn.disabled=false;btn.textContent='위키에 저장';}
 }
 
 // ─── Lint ───
