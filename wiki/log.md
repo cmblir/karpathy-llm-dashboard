@@ -25,8 +25,3 @@ Pages updated: [[index]], [[overview]]
 2017년 Google Brain의 Transformer 논문 소스를 ingest. Self-Attention, Multi-Head Attention 등 핵심 개념과 저자/조직 엔티티 페이지 생성.
 Pages created: [[source-attention-is-all-you-need]], [[google-brain]], [[ashish-vaswani]], [[transformer]], [[self-attention]], [[multi-head-attention]]
 Pages updated: [[andrej-karpathy]], [[index]], [[overview]]
-
-## [2026-04-22] ingest | Karpathy: LLM Wiki 2
-소스 파일 내용이 "duplicate test" 한 줄뿐인 테스트/더미 파일. 추출 가능한 엔티티·컨셉·기법 없음. source-summary만 생성.
-Pages created: [[source-karpathy-llm-wiki-2]]
-Pages updated: [[index]]
