@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""
+LLM Wiki Dashboard Server
+- 대시보드 HTML 서빙
+- Claude CLI / Obsidian 연결 상태 확인
+- Ingest, Query, Lint, 폴더/페이지 CRUD API
+- 의존성 없음 (Python 3.10+ stdlib only)
+"""
+
+import json, os, re, shutil, subprocess, sys, time, threading, urllib.parse
+from datetime import datetime
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+from pathlib import Path
+
+PORT = 8090
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+WIKI_DIR = PROJECT_ROOT / "wiki"
+RAW_DIR = PROJECT_ROOT / "raw"
+
+CLAUDE_TOOLS = "Edit,Write,Read,Glob,Grep"
+CLAUDE_TIMEOUT = 180
+
+# ─── helpers ───
+
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+LOG_ENTRY_RE = re.compile(r"^## \[(\d{4}-\d{2}-\d{2})\] (\w+) \| (.+)$", re.MULTILINE)
+
+
+def parse_fm(text):
+    meta, body = {}, text
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        return meta, body
+    body = text[m.end():]
+    raw = m.group(1)
+    for ml in re.finditer(r"^(\w+):\s*\n((?:\s+-\s+.+\n?)+)", raw, re.MULTILINE):
+        meta[ml.group(1)] = [x.strip().strip("'\"") for x in re.findall(r"-\s+(.+)", ml.group(2))]
+    for line in raw.strip().split("\n"):
+        if ":" not in line or line.startswith("  "):
+            continue
+        k, v = line.split(":", 1)
+        k, v = k.strip(), v.strip()
+        if k in meta:
+            continue
+        lm = re.search(r"\[(.*?)\]", v)
+        if lm:
+            meta[k] = [x.strip().strip("'\"") for x in lm.group(1).split(",") if x.strip()]
+        elif v:
+            meta[k] = v.strip("'\"")
+    return meta, body
+
+
+def extract_links(body):
+    return sorted({m.group(1).strip() + (".md" if not m.group(1).strip().endswith(".md") else "") for m in WIKILINK_RE.finditer(body)})
+
+
+def run_claude(prompt):
+    """claude -p 실행 → (ok, output, error)"""
+    try:
+        r = subprocess.run(
+            ["claude", "-p", "--allowedTools", CLAUDE_TOOLS, "--output-format", "text", prompt],
+            capture_output=True, text=True, timeout=CLAUDE_TIMEOUT,
+            cwd=str(PROJECT_ROOT),
+        )
+        return (r.returncode == 0, r.stdout[:4000], r.stderr[:500] if r.returncode != 0 else "")
+    except subprocess.TimeoutExpired:
+        return (False, "", f"Claude CLI timeout ({CLAUDE_TIMEOUT}s)")
+    except FileNotFoundError:
+        return (False, "", "claude CLI not found")
+
+
+# ─── wiki data ───
+
+def build_wiki_data():
+    pages, nodes, edges = [], [], []
+    type_counts, node_ids = {}, set()
+    for md in sorted(WIKI_DIR.rglob("*.md")):
+        rel = md.relative_to(WIKI_DIR)
+        filename = str(rel)
+        text = md.read_text(encoding="utf-8")
+        meta, body = parse_fm(text)
+        links = extract_links(body)
+        pt = meta.get("type", "unknown")
+        type_counts[pt] = type_counts.get(pt, 0) + 1
+        folder = str(rel.parent) if rel.parent != Path(".") else ""
+        pages.append({
+            "filename": filename, "folder": folder,
+            "title": meta.get("title", md.stem.replace("-", " ").title()),
+            "type": pt, "created": meta.get("created", ""), "updated": meta.get("updated", ""),
+            "tags": meta.get("tags", []), "sources": meta.get("sources", []),
+            "links": links, "word_count": len(body.split()), "content": body.strip(),
+        })
+        node_ids.add(filename)
+        nodes.append({"id": filename, "label": meta.get("title", md.stem), "type": pt})
+        for lnk in links:
+            edges.append({"from": filename, "to": lnk})
+    for e in edges:
+        if e["to"] not in node_ids:
+            node_ids.add(e["to"])
+            nodes.append({"id": e["to"], "label": e["to"].replace(".md", "").replace("-", " ").title(), "type": "missing"})
+    log_entries = []
+    lf = WIKI_DIR / "log.md"
+    if lf.exists():
+        _, lb = parse_fm(lf.read_text("utf-8"))
+        log_entries = [{"date": m.group(1), "action": m.group(2), "title": m.group(3)} for m in LOG_ENTRY_RE.finditer(lb)]
+    raw_count = sum(1 for f in RAW_DIR.rglob("*") if f.is_file() and not f.name.startswith(".") and "assets" not in f.parts) if RAW_DIR.exists() else 0
+    return {
+        "pages": pages,
+        "graph": {"nodes": nodes, "edges": edges},
+        "log": log_entries,
+        "stats": {"total_pages": len(pages), "raw_sources": raw_count, "type_counts": type_counts, "total_links": len(edges), "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M")},
+    }
+
+
+def get_folder_tree():
+    tree = {"name": "wiki", "path": "", "children": [], "pages": []}
+    for f in sorted(WIKI_DIR.glob("*.md")):
+        tree["pages"].append(f.name)
+    for d in sorted(WIKI_DIR.iterdir()):
+        if d.is_dir() and not d.name.startswith("."):
+            sub = {"name": d.name, "path": d.name, "children": [], "pages": []}
+            for f in sorted(d.rglob("*.md")):
+                sub["pages"].append(str(f.relative_to(WIKI_DIR)))
+            for sd in sorted(d.iterdir()):
+                if sd.is_dir() and not sd.name.startswith("."):
+                    sub["children"].append({"name": sd.name, "path": str(sd.relative_to(WIKI_DIR)), "pages": [str(f.relative_to(WIKI_DIR)) for f in sorted(sd.rglob("*.md"))]})
+            tree["children"].append(sub)
+    return tree
+
+
+def wiki_hash():
+    """wiki/ 변경 감지용 간단 해시 — 파일 수 + 총 mtime"""
+    total = 0
+    count = 0
+    for md in WIKI_DIR.rglob("*.md"):
+        total += int(md.stat().st_mtime * 1000)
+        count += 1
+    return f"{count}:{total}"
+
+
+# ─── status ───
+
+def check_status():
+    claude_ok, claude_ver = False, ""
+    try:
+        r = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            claude_ok = True
+            claude_ver = r.stdout.strip().split("\n")[0]
+    except Exception:
+        pass
+    obsidian_ok = False
+    try:
+        r = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True, timeout=3)
+        obsidian_ok = r.returncode == 0
+    except Exception:
+        pass
+    return {"claude": {"connected": claude_ok, "version": claude_ver}, "obsidian": {"connected": obsidian_ok}}
+
+
+# ─── operations ───
+
+def do_ingest(title, content, folder=""):
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or f"source-{int(time.time())}"
+    raw_path = RAW_DIR / f"{slug}.md"
+    raw_path.write_text(content, encoding="utf-8")
+    folder_inst = f" wiki/{folder}/ 폴더 하위에 페이지를 생성해." if folder else ""
+    prompt = f"Ingest raw/{slug}.md — 이 소스를 읽고 CLAUDE.md 지침대로 wiki 페이지들을 생성/갱신해. 핵심 내용 논의는 생략하고 바로 실행해.{folder_inst}"
+    ok, out, err = run_claude(prompt)
+    return {"ok": ok, "raw_file": f"raw/{slug}.md", "claude_output": out, "error": err}
+
+
+def do_query(question):
+    prompt = f"""다음 질문에 답해. wiki/index.md를 먼저 읽고 관련 wiki 페이지를 찾아 읽은 뒤 답변을 합성해.
+답변에 관련 위키 페이지를 [[wikilink]]로 인용해.
+질문: {question}"""
+    ok, out, err = run_claude(prompt)
+    return {"ok": ok, "answer": out, "error": err}
+
+
+def do_query_save(title, content):
+    """Query 답변을 wiki에 analysis 페이지로 저장"""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    filepath = WIKI_DIR / f"{slug}.md"
+    today = datetime.now().strftime("%Y-%m-%d")
+    md = f"""---
+title: "{title}"
+type: analysis
+created: {today}
+updated: {today}
+sources: []
+tags:
+  - query-result
+---
+
+{content}
+"""
+    filepath.write_text(md, encoding="utf-8")
+    # index, log 갱신은 claude에게 맡김
+    prompt = f"wiki/{slug}.md 페이지를 방금 생성했다. wiki/index.md의 Analyses 섹션에 이 페이지를 추가하고, wiki/log.md에 query 로그를 남기고, wiki/overview.md 통계를 갱신해."
+    run_claude(prompt)
+    return {"ok": True, "filename": f"{slug}.md"}
+
+
+def do_lint():
+    prompt = """CLAUDE.md의 Lint 지침대로 wiki 전체를 점검해.
+보고 형식:
+1. 모순 (있으면)
+2. 갱신 필요한 오래된 주장 (있으면)
+3. 고아 페이지 (인바운드 링크 없는 페이지)
+4. 누락된 컨셉 페이지 (언급되었지만 자체 페이지 없음)
+5. 빠진 교차참조
+6. 데이터 갭 / 추천 소스
+각 항목마다 수정 제안을 포함해."""
+    ok, out, err = run_claude(prompt)
+    return {"ok": ok, "report": out, "error": err}
+
+
+def do_lint_fix():
+    prompt = """방금 Lint 점검을 했다. 발견된 모든 문제를 지금 수정해:
+- 누락된 교차참조 추가
+- 고아 페이지에 인바운드 링크 추가
+- 언급되었지만 페이지 없는 컨셉은 stub 페이지 생성
+- index.md, log.md, overview.md 갱신
+수정한 내용을 요약해서 보고해."""
+    ok, out, err = run_claude(prompt)
+    return {"ok": ok, "result": out, "error": err}
+
+
+# ─── CRUD ───
+
+def create_folder(name, parent=""):
+    base = WIKI_DIR / parent if parent else WIKI_DIR
+    folder = base / name
+    folder.mkdir(parents=True, exist_ok=True)
+    return {"ok": True, "path": str(folder.relative_to(WIKI_DIR))}
+
+
+def create_page(title, page_type, folder="", content=""):
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    base = WIKI_DIR / folder if folder else WIKI_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    filepath = base / f"{slug}.md"
+    today = datetime.now().strftime("%Y-%m-%d")
+    body = content or f"# {title}\n\n<!-- Content will be added here -->"
+    md = f"""---
+title: "{title}"
+type: {page_type}
+created: {today}
+updated: {today}
+sources: []
+tags: []
+---
+
+{body}
+"""
+    filepath.write_text(md, encoding="utf-8")
+    return {"ok": True, "filename": str(filepath.relative_to(WIKI_DIR))}
+
+
+def update_page(filename, content):
+    filepath = WIKI_DIR / filename
+    if not filepath.exists():
+        return {"ok": False, "error": "Page not found"}
+    filepath.write_text(content, encoding="utf-8")
+    return {"ok": True}
+
+
+def delete_page(filename):
+    filepath = WIKI_DIR / filename
+    if not filepath.exists():
+        return {"ok": False, "error": "Page not found"}
+    if filename in ("index.md", "log.md", "overview.md"):
+        return {"ok": False, "error": "Cannot delete system page"}
+    filepath.unlink()
+    return {"ok": True}
+
+
+# ─── HTTP Handler ───
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=str(SCRIPT_DIR), **kw)
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path == "/api/status":
+            return self._json(check_status())
+        if path == "/api/wiki":
+            return self._json(build_wiki_data())
+        if path == "/api/folders":
+            return self._json(get_folder_tree())
+        if path == "/api/hash":
+            return self._json({"hash": wiki_hash()})
+        super().do_GET()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        body = self._read_body()
+
+        if path == "/api/ingest":
+            return self._json(do_ingest(body.get("title", ""), body.get("content", ""), body.get("folder", "")))
+        if path == "/api/query":
+            return self._json(do_query(body.get("question", "")))
+        if path == "/api/query/save":
+            return self._json(do_query_save(body.get("title", ""), body.get("content", "")))
+        if path == "/api/lint":
+            return self._json(do_lint())
+        if path == "/api/lint/fix":
+            return self._json(do_lint_fix())
+        if path == "/api/folder":
+            return self._json(create_folder(body.get("name", ""), body.get("parent", "")))
+        if path == "/api/page":
+            return self._json(create_page(body.get("title", ""), body.get("type", "concept"), body.get("folder", ""), body.get("content", "")))
+        if path == "/api/page/update":
+            return self._json(update_page(body.get("filename", ""), body.get("content", "")))
+        if path == "/api/page/delete":
+            return self._json(delete_page(body.get("filename", "")))
+        self.send_error(404)
+
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+
+    def _json(self, data):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", len(body))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def log_message(self, fmt, *args):
+        ts = datetime.now().strftime("%H:%M:%S")
+        print(f"[{ts}] {args[0]}" if args else "")
+
+
+if __name__ == "__main__":
+    print(f"LLM Wiki Dashboard → http://localhost:{PORT}")
+    print(f"Project: {PROJECT_ROOT}")
+    print(f"Wiki:    {WIKI_DIR} ({sum(1 for _ in WIKI_DIR.rglob('*.md'))} pages)")
+    HTTPServer(("", PORT), Handler).serve_forever()
