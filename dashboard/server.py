@@ -40,6 +40,20 @@ CLAUDE_TIMEOUT = 180
 RAW_ABS = os.path.abspath(str(RAW_DIR))
 
 
+# ─── slug 생성 (한글/유니코드 지원) ───
+
+def make_slug(title):
+    """제목 → 파일 슬러그. 한글은 그대로 유지, 특수문자만 제거."""
+    s = (title or "").strip().lower()
+    # \w는 유니코드 워드(한글 포함) + _, 공백은 허용 → 하이픈으로
+    s = re.sub(r"[^\w\s-]", "", s, flags=re.UNICODE)
+    s = re.sub(r"[\s_]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    if not s:
+        s = f"untitled-{int(time.time())}"
+    return s
+
+
 # ─── raw/ 보호 ───
 
 def assert_writable(path):
@@ -414,6 +428,59 @@ def wiki_hash():
 
 # ─── status ───
 
+def _check_obsidian_vault():
+    """이 프로젝트가 실제로 Obsidian에 vault로 열려있는지 확인.
+
+    3단계 체크:
+      1. Obsidian 프로세스 실행 중
+      2. Obsidian config에 이 경로가 vault로 등록됨
+      3. 해당 vault의 open 플래그가 true
+    """
+    # 1. 프로세스 확인 (macOS/Linux)
+    try:
+        r = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True, timeout=3)
+        process_running = r.returncode == 0
+    except Exception:
+        process_running = False
+
+    if not process_running:
+        return {"connected": False, "message": "not running"}
+
+    # 2. Obsidian config 경로 (OS별)
+    home = Path.home()
+    candidates = [
+        home / "Library/Application Support/obsidian/obsidian.json",  # macOS
+        home / ".config/obsidian/obsidian.json",                       # Linux
+        home / "AppData/Roaming/obsidian/obsidian.json",               # Windows
+    ]
+    config_path = next((p for p in candidates if p.exists()), None)
+    if config_path is None:
+        # config 파일 없으면 프로세스만으로 판단 — 보수적으로 "unknown"
+        return {"connected": False, "message": "Obsidian config not found"}
+
+    # 3. 이 프로젝트가 등록·열려있는지
+    try:
+        cfg = json.loads(config_path.read_text("utf-8"))
+    except Exception as e:
+        return {"connected": False, "message": f"config parse error: {e}"}
+
+    vaults = cfg.get("vaults", {}) or {}
+    project_resolved = PROJECT_ROOT.resolve()
+    for vid, info in vaults.items():
+        vault_path = info.get("path", "")
+        if not vault_path:
+            continue
+        try:
+            if Path(vault_path).resolve() == project_resolved:
+                if info.get("open"):
+                    return {"connected": True, "message": "vault open"}
+                else:
+                    return {"connected": False, "message": "vault registered but closed"}
+        except Exception:
+            continue
+    return {"connected": False, "message": "vault not registered"}
+
+
 def check_status():
     claude_ok, claude_ver = False, ""
     try:
@@ -423,13 +490,11 @@ def check_status():
             claude_ver = r.stdout.strip().split("\n")[0]
     except Exception:
         pass
-    obsidian_ok = False
-    try:
-        r = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True, timeout=3)
-        obsidian_ok = r.returncode == 0
-    except Exception:
-        pass
-    return {"claude": {"connected": claude_ok, "version": claude_ver}, "obsidian": {"connected": obsidian_ok}}
+    obsidian = _check_obsidian_vault()
+    return {
+        "claude": {"connected": claude_ok, "version": claude_ver},
+        "obsidian": obsidian,
+    }
 
 
 # ─── operations ───
@@ -468,7 +533,7 @@ def _diff_snapshots(before, after):
 
 
 def do_ingest(title, content, folder=""):
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or f"source-{int(time.time())}"
+    slug = make_slug(title)
     raw_path = dedupe_raw_path(RAW_DIR / f"{slug}.md")
     raw_path.write_text(content, encoding="utf-8")
     slug = raw_path.stem  # dedupe로 변경됐을 수 있으므로 갱신
@@ -560,8 +625,16 @@ def do_query(question):
 
 def do_query_save(title, content):
     """Query 답변을 wiki에 analysis 페이지로 저장"""
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    if not title or not title.strip():
+        return {"ok": False, "error": "Title is required"}
+    slug = make_slug(title)
     filepath = WIKI_DIR / f"{slug}.md"
+    # 중복 회피
+    n = 2
+    while filepath.exists():
+        filepath = WIKI_DIR / f"{slug}-{n}.md"
+        n += 1
+    slug = filepath.stem
     today = datetime.now().strftime("%Y-%m-%d")
     md = f"""---
 title: "{title}"
@@ -830,7 +903,9 @@ def create_folder(name, parent=""):
 
 
 def create_page(title, page_type, folder="", content=""):
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    if not title or not title.strip():
+        return {"ok": False, "error": "Title is required"}
+    slug = make_slug(title)
     base = WIKI_DIR / folder if folder else WIKI_DIR
     base.mkdir(parents=True, exist_ok=True)
     filepath = base / f"{slug}.md"
