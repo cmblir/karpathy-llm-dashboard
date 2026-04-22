@@ -288,15 +288,20 @@ async function checkStatus(){
     var r=await fetch('/api/status');var s=await r.json();
     // Claude
     setDot('dotClaude','lblClaude',s.claude.connected,s.claude.connected?s.claude.version:'');
-    // Obsidian: raw fact만 표시 (서버가 준 필드 그대로)
+    // Obsidian: 프로세스가 꺼졌으면 vault 정보는 stale이므로 표시 안 함
     var o=s.obsidian||{};
-    var connected=!!(o.process_running && o.vault_open);
-    var parts=[];
-    parts.push('process=' + (o.process_running?'on':'off'));
-    if(o.vault_registered)parts.push('vault_open=' + (o.vault_open?'true':'false'));
-    else if(o.config_path)parts.push('vault=not_registered');
-    else parts.push('config=not_found');
-    setDot('dotObsidian','lblObsidian',connected,parts.join(' · '));
+    var label='';
+    if(!o.process_running){
+      label='off';
+    }else if(!o.config_path){
+      label='on · config not found';
+    }else if(!o.vault_registered){
+      label='on · vault not registered';
+    }else{
+      label='on · vault_open=' + (o.vault_open?'true':'false');
+    }
+    var connected=!!(o.process_running && o.vault_registered && o.vault_open);
+    setDot('dotObsidian','lblObsidian',connected,label);
   }catch(e){
     setDot('dotClaude','lblClaude',false,'');
     setDot('dotObsidian','lblObsidian',false,'');
