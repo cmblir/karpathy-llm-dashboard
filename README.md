@@ -23,6 +23,10 @@ That's it. Obsidian settings, graph colors, and hotkeys are pre-configured.
 
 ## What You Can Do
 
+### Languages
+
+The dashboard is fully bilingual (English / 한국어). Use the **EN / 한국어** toggle in the top-right header. Your choice persists in `localStorage`.
+
 ### From the Dashboard (http://localhost:8090)
 
 | Feature | Description |
@@ -31,6 +35,12 @@ That's it. Obsidian settings, graph colors, and hotkeys are pre-configured.
 | **Query** | Ask questions → Claude searches wiki, synthesizes answer with citations. Tracks which files were read |
 | **Lint** | Health check: missing citations, orphan pages, stale claims, frontmatter issues (16-point checklist) |
 | **Reflect** | Meta-analysis of recent ingests → suggests new pages, schema improvements, missing sources |
+| **Write** ✨ | Writing Companion: draft essays/articles using the wiki with automatic `[^src-*]` citations. Topic + length + style (blog/paper/explainer) |
+| **Compare** ✨ | Two-page analysis (similarities / differences / implications) → save as `comparison` page |
+| **Review** ✨ | Spaced Review: list active pages stale for 30+ days → refresh with Claude |
+| **Search** ✨ | Smart Search: TF-IDF full-text search across the wiki with score-ranked snippets |
+| **Slides** ✨ | Export any page as Marp-compatible slide deck markdown |
+| **Suggest Sources** ✨ | Claude recommends what to ingest next based on wiki gaps |
 | **History** | Git-backed ingest history with one-click revert |
 | **Provenance** | Citation coverage table per page, auto-fix with Claude |
 | **Graph** | Interactive knowledge graph with drag, click to navigate |
@@ -129,12 +139,19 @@ When sources conflict, CLAUDE.md defines 3 resolution paths:
 | GET | `/api/index/status` | Current indexing strategy |
 | GET | `/api/raw/integrity` | raw/ tampering check |
 | GET | `/api/reflect/status` | Last reflect date |
+| GET | `/api/review/list` | Pages stale for 30+ days |
 | POST | `/api/ingest` | Ingest source (diff, reasoning, auto-commit) |
 | POST | `/api/query` | Query with file tracking |
 | POST | `/api/query/save` | Save query answer as wiki page |
 | POST | `/api/lint` | Run lint checklist |
 | POST | `/api/lint/fix` | Auto-fix lint issues |
 | POST | `/api/reflect` | Run meta-analysis |
+| POST | `/api/write` | Writing companion (topic → drafted essay) |
+| POST | `/api/compare` | Compare two pages, optionally save |
+| POST | `/api/review/refresh` | Refresh a stale page with Claude |
+| POST | `/api/slides` | Export page as Marp slide deck |
+| POST | `/api/search` | TF-IDF full-text search |
+| POST | `/api/suggest/sources` | Claude suggests next sources to ingest |
 | POST | `/api/provenance/fix` | Fix citations for a page |
 | POST | `/api/index/rebuild` | Force index rebuild |
 | POST | `/api/revert` | Revert an ingest commit |

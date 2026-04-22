@@ -336,6 +336,19 @@ const I18N={
     last_updated:'Updated',
     type_source:'Source', type_entity:'Entity', type_concept:'Concept',
     type_comparison:'Comparison', type_analysis:'Analysis', type_overview:'Overview',
+    wr_tip_suffix:'(last {n} queries)',
+    confirm_revert_specific:'Revert "{name}"? Files created by this ingest will be removed and modified files will be restored.',
+    revert_fail:'Revert failed: ',
+    reflect_sec_pages:'Pages worth creating',
+    reflect_sec_schema:'Rules to add to CLAUDE.md',
+    reflect_sec_sources:'Search terms for underrepresented topics',
+    reflect_sec_contradiction:'Patterns of source conflict',
+    reflect_sec_nothing:'Nothing found.',
+    suggest_processing:'Claude is generating suggestions...',
+    suggest_none:'No suggestions. The wiki looks well covered.',
+    fix_citation_processing:'Claude is filling in citations for ',
+    graph_title:'Knowledge Graph · click a node to open',
+    ingest_result_created:'created', ingest_result_modified:'modified',
   },
   ko:{
     search_placeholder:'페이지 검색...',
@@ -345,61 +358,78 @@ const I18N={
     nav_reflect:'성찰', nav_write:'작성', nav_compare:'비교', nav_review:'복습',
     nav_search:'검색', nav_graph:'그래프', nav_history:'이력', nav_provenance:'출처',
     nav_folder:'+ 폴더', nav_new_page:'+ 페이지', nav_guide:'? 가이드',
-    ingest_title:'소스 수집',
-    ingest_desc:'내용을 붙여넣고 수집 버튼을 누르세요. raw/에 저장되고 Claude가 위키 페이지를 생성합니다.',
-    field_title:'제목', field_content:'내용 (Markdown)', field_folder:'저장 폴더',
-    ingest_btn:'Claude로 수집', ingest_processing:'Claude CLI 호출 중... (최대 3분)',
+    ingest_title:'새 소스 수집',
+    ingest_desc:'문서 내용을 붙여넣고 수집을 실행하면, 원본은 raw/ 폴더에 보존되고 Claude가 관련 위키 페이지를 만들어 줍니다.',
+    field_title:'제목', field_content:'내용 (Markdown)', field_folder:'저장할 폴더',
+    ingest_btn:'Claude로 수집하기', ingest_processing:'Claude가 수집 중입니다... (최대 3분)',
     ingest_done:'수집 완료',
-    query_title:'질문', query_desc:'축적된 위키에 질문합니다. Claude가 관련 페이지를 찾아 답변을 합성합니다.',
-    field_question:'질문', query_btn:'Claude에게 질문', query_processing:'Claude가 위키를 검색 중...',
-    query_save_to_wiki:'위키에 저장', query_save_placeholder:'페이지 제목 (예: Self-Attention 분석)',
-    lint_title:'위키 건강 검진', lint_desc:'모순, 고아 페이지, 누락된 인용, 데이터 공백을 검사합니다.',
-    lint_btn:'검진 실행', lint_fix_btn:'자동 수정 적용',
-    reflect_title:'성찰', reflect_desc:'최근 수집·로그·쿼리의 메타 분석으로 개선점을 제안합니다. 주 1회 권장.',
-    reflect_window:'분석 범위', reflect_win_10:'최근 10회 수집', reflect_win_week:'최근 1주', reflect_win_all:'전체',
-    reflect_btn:'성찰 실행', reflect_processing:'Claude가 위키를 메타 분석 중... (1-3분)',
-    write_title:'작성 동반자',
-    write_desc:'축적된 위키를 활용해 에세이나 글을 초안합니다. 모든 주장에 인용이 자동 삽입됩니다.',
+    query_title:'위키에 질문하기',
+    query_desc:'지금까지 쌓인 위키를 근거로 Claude가 관련 페이지를 찾아 인용과 함께 답변합니다.',
+    field_question:'질문 내용', query_btn:'Claude에게 물어보기', query_processing:'관련 페이지를 찾고 있습니다...',
+    query_save_to_wiki:'이 답변을 위키에 저장', query_save_placeholder:'저장할 페이지 제목 (예: Self-Attention 분석)',
+    lint_title:'위키 건강 검진',
+    lint_desc:'페이지 간 모순, 다른 페이지에서 전혀 링크되지 않는 고아 페이지, 인용이 빠진 주장, 아직 다뤄지지 않은 빈 영역 등을 점검합니다.',
+    lint_btn:'검진 실행', lint_fix_btn:'제안된 수정 자동 반영',
+    reflect_title:'위키 성찰',
+    reflect_desc:'최근의 수집 기록·활동 로그·질문 내역을 종합해 개선할 점을 제안합니다. 주 1회 정도 실행하는 것을 권장합니다.',
+    reflect_window:'분석 범위', reflect_win_10:'최근 수집 10건', reflect_win_week:'최근 일주일', reflect_win_all:'전체 기간',
+    reflect_btn:'성찰 실행', reflect_processing:'Claude가 위키를 돌아보며 분석 중입니다... (1~3분)',
+    write_title:'글쓰기 도우미',
+    write_desc:'쌓인 위키 지식을 바탕으로 글 초안을 만들어 줍니다. 모든 사실 주장에는 인용이 자동으로 달립니다.',
     write_topic:'주제', write_topic_ph:'예: Self-Attention이 RNN을 대체한 이유',
-    write_length:'분량', write_short:'짧게 (~300단어)', write_medium:'보통 (~700단어)', write_long:'길게 (~1500단어)',
-    write_style:'스타일', write_style_blog:'블로그 글', write_style_paper:'학술', write_style_explainer:'해설',
-    write_btn:'Claude로 초안 작성', write_processing:'Claude가 초안 작성 중... (1-2분)',
-    compare_title:'페이지 비교',
-    compare_desc:'두 페이지를 선택하세요. Claude가 공통점·차이·시사점을 분석합니다.',
-    compare_a:'페이지 A', compare_b:'페이지 B', compare_btn:'비교',
-    compare_processing:'Claude가 비교 중... (약 1분)',
-    review_title:'복습',
-    review_desc:'30일 이상 갱신되지 않은 active 페이지. 새 관점으로 갱신하세요.',
-    review_empty:'모든 페이지가 신선합니다 (30일 미만).',
-    review_refresh:'Claude로 갱신',
-    search_title:'스마트 검색', search_desc:'전체 위키에 대한 TF-IDF 전문 검색.',
-    search_ph:'키워드 입력...', search_btn:'검색',
-    search_no_results:'매칭되는 페이지가 없습니다.',
+    write_length:'분량', write_short:'짧게 (약 300단어)', write_medium:'보통 (약 700단어)', write_long:'길게 (약 1500단어)',
+    write_style:'스타일', write_style_blog:'블로그 글', write_style_paper:'학술 논문', write_style_explainer:'쉬운 해설',
+    write_btn:'Claude로 초안 작성', write_processing:'초안을 작성하고 있습니다... (1~2분)',
+    compare_title:'두 페이지 비교',
+    compare_desc:'비교할 두 페이지를 고르면 Claude가 공통점·차이점·시사점을 정리해 줍니다.',
+    compare_a:'페이지 A', compare_b:'페이지 B', compare_btn:'비교하기',
+    compare_processing:'두 페이지를 비교하고 있습니다... (약 1분)',
+    review_title:'오래된 페이지 복습',
+    review_desc:'30일 넘게 갱신되지 않은 활성 페이지 목록입니다. Claude가 최신 관점을 반영해 업데이트할 수 있습니다.',
+    review_empty:'모든 페이지가 최근에 갱신되었습니다.',
+    review_refresh:'Claude로 최신화',
+    search_title:'스마트 검색',
+    search_desc:'TF-IDF 방식으로 위키 전체 본문을 검색합니다.',
+    search_ph:'검색어를 입력하세요...', search_btn:'검색',
+    search_no_results:'검색 결과가 없습니다.',
     history_title:'수집 이력',
-    history_desc:'각 수집은 git 커밋입니다. Revert로 해당 수집의 변경을 되돌립니다.',
+    history_desc:'각 수집은 git 커밋으로 기록됩니다. Revert 버튼을 누르면 해당 수집이 만든 변경만 되돌릴 수 있습니다.',
     provenance_title:'인용 커버리지',
-    provenance_desc:'페이지별 주장 대비 인라인 인용 비율. 소스 페이지는 제외.',
-    guide_title:'사용 가이드', guide_loading:'로딩 중...',
+    provenance_desc:'각 페이지에서 주장 문장 대비 인용이 붙은 문장의 비율입니다. 소스 요약 페이지는 제외됩니다.',
+    guide_title:'사용 가이드', guide_loading:'불러오는 중...',
     btn_edit:'편집', btn_delete:'삭제', btn_save:'저장', btn_cancel:'취소',
-    btn_approve:'승인', btn_revert:'되돌리기', btn_preview:'미리보기', btn_fix:'수정',
-    btn_create:'생성',
-    err_title_required:'제목이 필요합니다.', err_content_required:'내용이 필요합니다.',
+    btn_approve:'확정', btn_revert:'되돌리기', btn_preview:'미리보기', btn_fix:'보완',
+    btn_create:'만들기',
+    err_title_required:'제목을 입력해 주세요.', err_content_required:'내용을 입력해 주세요.',
     err_network:'네트워크 오류: ',
-    confirm_revert:'되돌리기: 이 수집이 만든 변경이 모두 취소됩니다.',
-    confirm_delete:'이 페이지를 삭제합니다. 되돌릴 수 없습니다.',
-    save_success:'저장됨', save_fail:'저장 실패: ',
+    confirm_revert:'이 수집을 되돌리면 해당 수집이 만든 모든 변경이 취소됩니다. 계속하시겠습니까?',
+    confirm_delete:'이 페이지를 정말 삭제할까요? 삭제 후에는 복구할 수 없습니다.',
+    save_success:'저장되었습니다', save_fail:'저장 실패: ',
     page_count:'페이지', source_count:'소스', link_count:'링크',
-    wiki_ratio_high:'위키가 주요 지식 소스로 잘 작동합니다.',
-    wiki_ratio_mid:'위키와 raw를 혼합 참조 중. 수집을 늘려보세요.',
-    wiki_ratio_low:'위키가 raw를 대체하지 못하고 있음. 수집 품질 점검 필요.',
-    files_read_summary:'이 답변은',
-    wiki_files:'wiki 파일', raw_files:'raw 파일',
-    show_files:'파일 목록', reasoning:'판단 근거:',
-    created:'생성', modified:'수정',
-    new_folder:'새 폴더', folder_name:'폴더 이름', parent:'상위',
-    new_page:'새 페이지', page_type:'타입',
+    wiki_ratio_high:'위키가 주요 참고 자료로 잘 활용되고 있습니다.',
+    wiki_ratio_mid:'위키와 원본 소스를 섞어 참고하고 있어요. 위키 수집을 더 해보면 좋습니다.',
+    wiki_ratio_low:'Claude가 위키 대신 원본 소스를 주로 읽고 있어요. 수집 품질을 점검해 보세요.',
+    files_read_summary:'이 답변을 위해',
+    wiki_files:'개의 위키 파일', raw_files:'개의 원본 파일',
+    show_files:'읽은 파일 보기', reasoning:'판단 근거:',
+    created:'새로 만든 페이지', modified:'수정된 페이지',
+    new_folder:'새 폴더 만들기', folder_name:'폴더 이름', parent:'상위 폴더',
+    new_page:'새 페이지 만들기', page_type:'페이지 타입',
     delete_confirm_title:'페이지 삭제',
-    schema_title:'CLAUDE.md', schema_desc:'이 파일이 Claude에게 위키 운영 방법을 알려줍니다. 변경 시 다음 수집/질문/검진부터 적용.',
+    schema_title:'CLAUDE.md', schema_desc:'이 파일이 Claude에게 위키 운영 방식을 알려주는 설계도입니다. 수정한 내용은 다음 수집·질문·검진부터 반영됩니다.',
+    wr_tip_suffix:'(최근 쿼리 {n}건 기준)',
+    confirm_revert_specific:'"{name}" 수집을 되돌리시겠습니까? 이 수집이 만든 페이지는 삭제되고, 수정한 페이지는 이전 상태로 복원됩니다.',
+    revert_fail:'되돌리기 실패: ',
+    reflect_sec_pages:'새로 만들면 좋은 페이지',
+    reflect_sec_schema:'CLAUDE.md에 추가할 규칙',
+    reflect_sec_sources:'보강이 필요한 주제의 검색어',
+    reflect_sec_contradiction:'소스 간 충돌 패턴',
+    reflect_sec_nothing:'발견 사항 없음.',
+    suggest_processing:'제안을 생성하고 있습니다...',
+    suggest_none:'제안 사항 없음. 위키가 잘 정리되어 있습니다.',
+    fix_citation_processing:'인용을 보완하고 있습니다: ',
+    graph_title:'지식 그래프 · 노드를 클릭하면 해당 페이지로 이동합니다',
+    ingest_result_created:'생성', ingest_result_modified:'수정',
     last_updated:'갱신일',
     type_source:'소스', type_entity:'엔티티', type_concept:'개념',
     type_comparison:'비교', type_analysis:'분석', type_overview:'개요',
@@ -509,8 +539,9 @@ async function loadWikiRatio(){
     if(d.avg_wiki_ratio===null){el.innerHTML='';return;}
     var v=d.avg_wiki_ratio;var pct=Math.round(v*100);
     var color=v>=0.7?'var(--green)':v>=0.4?'var(--orange)':'var(--red)';
-    var tip=v>=0.7?'위키가 주요 지식 소스로 잘 작동하고 있습니다.':v>=0.4?'위키와 raw를 혼합 참조 중. Ingest 추가를 고려하세요.':'위키가 raw를 대체하지 못하고 있음. Ingest 품질을 점검하세요.';
-    el.innerHTML='Wiki <span class="wr-val" style="color:'+color+'">'+pct+'%</span><div class="wr-bar"><div class="wr-fill" style="width:'+pct+'%;background:'+color+'"></div></div><span class="wr-tip">'+tip+' (최근 '+d.count+'개 쿼리)</span>';
+    var tip=v>=0.7?t('wiki_ratio_high'):v>=0.4?t('wiki_ratio_mid'):t('wiki_ratio_low');
+    var suffix=t('wr_tip_suffix').replace('{n}',d.count);
+    el.innerHTML='Wiki <span class="wr-val" style="color:'+color+'">'+pct+'%</span><div class="wr-bar"><div class="wr-fill" style="width:'+pct+'%;background:'+color+'"></div></div><span class="wr-tip">'+tip+' '+suffix+'</span>';
   }catch(e){}
 }
 function renderSidebar(){const el=document.getElementById('slist');if(tab==='tree')renderTree(el);else if(tab==='pages')renderPageList(el);else renderLog(el);}
@@ -651,8 +682,8 @@ function showIngestResult(d){
   window._irFiles=files;
 
   var h='<div class="ir-panel">';
-  h+='<h2 style="margin-bottom:4px">Ingest Complete</h2>';
-  h+='<p class="desc" style="margin-bottom:16px"><span style="color:var(--green);font-weight:600">'+d.created_pages.length+' created</span> · <span style="color:var(--orange);font-weight:600">'+d.modified_pages.length+' modified</span>';
+  h+='<h2 style="margin-bottom:4px">'+t('ingest_done')+'</h2>';
+  h+='<p class="desc" style="margin-bottom:16px"><span style="color:var(--green);font-weight:600">'+d.created_pages.length+' '+t('ingest_result_created')+'</span> · <span style="color:var(--orange);font-weight:600">'+d.modified_pages.length+' '+t('ingest_result_modified')+'</span>';
   if(d.commit_hash) h+=' · <span style="font-family:var(--mono);font-size:11px;color:var(--accent)">'+d.commit_hash.substring(0,8)+'</span>';
   h+='</p>';
 
@@ -728,14 +759,14 @@ function approveIngest(){
 async function revertIngest(){
   var d=window._lastIngestResult;
   if(!d||!d.commit_hash)return;
-  if(!confirm('이 Ingest를 되돌립니다. 생성된 페이지가 삭제되고 수정된 페이지가 복원됩니다.'))return;
+  if(!confirm(t('confirm_revert_specific').replace('{name}',d.raw_file||'')))return;
   try{
     var r=await fetch('/api/revert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({commit_hash:d.commit_hash})});
     var res=await r.json();
     if(res.ok){
       await Promise.all([loadWiki(),loadFolders()]);renderStats();renderSidebar();
       showIngest();
-    }else{alert('Revert 실패: '+res.error);}
+    }else{alert(t('revert_fail')+res.error);}
   }catch(e){alert('Error: '+e.message);}
 }
 
@@ -860,20 +891,17 @@ async function doReflect(){
   var btn=document.getElementById('reflectRunBtn');
   var res=document.getElementById('reflectResult');
   btn.disabled=true;btn.textContent='Analyzing...';
-  res.className='result-box info';res.textContent='Claude가 위키를 메타 분석 중... (1~3분 소요)';
+  res.className='result-box info';res.textContent=t('reflect_processing');
   try{
     var r=await fetch('/api/reflect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({window:win})});
     var d=await r.json();
     if(d.ok){
       var h='';
       // Suggested Pages
-      h+=buildReflectSection('Suggested Pages','새로 만들면 좋을 페이지',d.sections.suggested_pages,true);
-      // Suggested Schema
-      h+=buildReflectSection('Suggested Schema Updates','CLAUDE.md에 추가할 규칙',d.sections.suggested_schema,false);
-      // Suggested Sources
-      h+=buildReflectSection('Suggested Sources','보강이 필요한 주제의 검색어',d.sections.suggested_sources,false);
-      // Contradiction Review
-      h+=buildReflectSection('Contradiction Review','소스 간 충돌 패턴',d.sections.contradiction_review,false);
+      h+=buildReflectSection('Suggested Pages',t('reflect_sec_pages'),d.sections.suggested_pages,true);
+      h+=buildReflectSection('Suggested Schema Updates',t('reflect_sec_schema'),d.sections.suggested_schema,false);
+      h+=buildReflectSection('Suggested Sources',t('reflect_sec_sources'),d.sections.suggested_sources,false);
+      h+=buildReflectSection('Contradiction Review',t('reflect_sec_contradiction'),d.sections.contradiction_review,false);
       res.className='';
       res.innerHTML=h;
       checkReflectStatus();
@@ -885,7 +913,7 @@ async function doReflect(){
 }
 
 function buildReflectSection(title,desc,content,showCreate){
-  if(!content||content.trim()==='(none)'||content.trim()==='없음')content='발견 사항 없음.';
+  if(!content||content.trim()==='(none)'||content.trim()==='없음')content=t('reflect_sec_nothing');
   var body=content.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g,'[$2]($1.md)').replace(/\[\[([^\]]+)\]\]/g,'[$1]($1.md)');
   var h='<div class="reflect-section">';
   h+='<div class="reflect-hdr" onclick="toggleReflectSection(this)"><span class="r-arrow">▶</span>'+esc(title)+'<span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:auto">'+esc(desc)+'</span></div>';
@@ -1063,12 +1091,12 @@ async function doSearch(){
 async function doSuggestSources(){
   var res=document.getElementById('suggestResult');
   if(!res)return;
-  res.className='result-box info';res.textContent='Claude가 제안 생성 중...';
+  res.className='result-box info';res.textContent=t('suggest_processing');
   try{
     var r=await fetch('/api/suggest/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     var d=await r.json();
     if(d.ok){
-      if(!d.suggestions.length){res.className='result-box ok';res.textContent='제안 없음. 위키가 잘 정리되어 있습니다.';return;}
+      if(!d.suggestions.length){res.className='result-box ok';res.textContent=t('suggest_none');return;}
       var h='<table class="prov-table"><thead><tr><th>Suggestion</th><th>Why</th><th>Expected Pages</th></tr></thead><tbody>';
       d.suggestions.forEach(function(s){
         h+='<tr><td><b>'+esc(s.suggestion)+'</b></td><td>'+esc(s.why)+'</td><td style="font-size:11px;color:var(--muted)">'+esc(s.expected_pages)+'</td></tr>';
@@ -1100,14 +1128,14 @@ async function doSlideExport(fn){
 // ─── Provenance ───
 async function showProvenance(){
   setView('provenance');cur=null;
-  document.getElementById('bc').innerHTML='<b>Provenance</b> · Citation 커버리지';
-  document.getElementById('content').innerHTML='<div class="panel"><h2>Citation Provenance</h2><p class="desc">Loading...</p></div>';
+  document.getElementById('bc').innerHTML='<b>'+t('provenance_title')+'</b>';
+  document.getElementById('content').innerHTML='<div class="panel"><h2>'+t('provenance_title')+'</h2><p class="desc">'+t('guide_loading')+'</p></div>';
   try{
     var r=await fetch('/api/provenance');var list=await r.json();
-    var h='<div class="panel"><h2>Citation Provenance</h2>';
-    h+='<p class="desc">각 위키 페이지의 claim 중 inline citation [^src-*]이 있는 비율입니다. Source 타입 페이지는 제외됩니다.</p>';
+    var h='<div class="panel"><h2>'+t('provenance_title')+'</h2>';
+    h+='<p class="desc">'+t('provenance_desc')+'</p>';
     if(!list.length){
-      h+='<p style="color:var(--muted);padding:20px 0">분석 대상 페이지가 없습니다.</p>';
+      h+='<p style="color:var(--muted);padding:20px 0">—</p>';
     }else{
       h+='<table class="prov-table"><thead><tr><th>Page</th><th>Claims</th><th>Cited</th><th>Coverage</th><th style="width:120px">Bar</th><th></th></tr></thead><tbody>';
       for(var i=0;i<list.length;i++){
@@ -1140,7 +1168,7 @@ async function showProvenance(){
 async function fixCitations(page){
   var res=document.getElementById('provResult');
   if(!res)return;
-  res.className='result-box info';res.textContent='Claude가 '+page+' citation을 보완 중...';
+  res.className='result-box info';res.textContent=t('fix_citation_processing')+page;
   try{
     var r=await fetch('/api/provenance/fix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({page:page})});
     var d=await r.json();
@@ -1158,14 +1186,14 @@ async function fixCitations(page){
 // ─── History ───
 async function showHistory(){
   setView('history');cur=null;
-  document.getElementById('bc').innerHTML='<b>History</b> · Ingest 이력 / Revert';
-  document.getElementById('content').innerHTML='<div class="panel"><h2>Ingest History</h2><p class="desc">Loading...</p></div>';
+  document.getElementById('bc').innerHTML='<b>'+t('history_title')+'</b>';
+  document.getElementById('content').innerHTML='<div class="panel"><h2>'+t('history_title')+'</h2><p class="desc">'+t('guide_loading')+'</p></div>';
   try{
-    const r=await fetch('/api/history');const list=await r.json();
-    var h='<div class="panel"><h2>Ingest History</h2>';
-    h+='<p class="desc">각 Ingest의 git 커밋 이력입니다. Revert로 해당 Ingest가 만든 변경을 되돌릴 수 있습니다.</p>';
+    var r=await fetch('/api/history');var list=await r.json();
+    var h='<div class="panel"><h2>'+t('history_title')+'</h2>';
+    h+='<p class="desc">'+t('history_desc')+'</p>';
     if(!list.length){
-      h+='<p style="color:var(--muted);padding:20px 0">아직 Ingest 이력이 없습니다.</p>';
+      h+='<p style="color:var(--muted);padding:20px 0">—</p>';
     }else{
       h+='<table class="hist-table"><thead><tr><th>Hash</th><th>Source</th><th>Date</th><th style="text-align:center">Files</th><th></th></tr></thead><tbody>';
       for(var i=0;i<list.length;i++){
@@ -1188,7 +1216,7 @@ async function showHistory(){
 }
 
 async function doRevert(hash,sourceName){
-  if(!confirm('Revert: "'+sourceName+'" ingest를 되돌립니다.\n\n해당 커밋이 생성/수정한 파일들이 이전 상태로 복원됩니다.\n계속하시겠습니까?'))return;
+  if(!confirm(t('confirm_revert_specific').replace('{name}',sourceName)))return;
   var btns=document.querySelectorAll('.btn-revert');
   btns.forEach(function(b){b.disabled=true;});
   try{
@@ -1199,7 +1227,7 @@ async function doRevert(hash,sourceName){
       renderStats();renderSidebar();
       showHistory();
     }else{
-      alert('Revert 실패: '+d.error);
+      alert(t('revert_fail')+d.error);
       btns.forEach(function(b){b.disabled=false;});
     }
   }catch(e){
@@ -1210,7 +1238,7 @@ async function doRevert(hash,sourceName){
 
 // ─── Graph ───
 function showGraph(){
-  setView('graph');cur=null;document.getElementById('bc').innerHTML='Knowledge Graph · 노드 클릭으로 이동';
+  setView('graph');cur=null;document.getElementById('bc').innerHTML=t('graph_title');
   const area=document.getElementById('content');area.innerHTML='<div class="graph-wrap"><canvas id="cv"></canvas></div>';
   const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),box=cv.parentElement;
   const dpr=window.devicePixelRatio||1;cv.width=box.clientWidth*dpr;cv.height=box.clientHeight*dpr;cv.style.width=box.clientWidth+'px';cv.style.height=box.clientHeight+'px';ctx.scale(dpr,dpr);
@@ -1241,27 +1269,27 @@ function showGraph(){
 // ─── Schema (CLAUDE.md) ───
 async function showSchema(){
   setView('schema');cur=null;
-  document.getElementById('bc').innerHTML='<b>CLAUDE.md</b> · LLM 에이전트 스키마';
-  document.getElementById('content').innerHTML='<div class="panel"><h2>CLAUDE.md</h2><p class="desc">Loading...</p></div>';
+  document.getElementById('bc').innerHTML='<b>CLAUDE.md</b>';
+  document.getElementById('content').innerHTML='<div class="panel"><h2>CLAUDE.md</h2><p class="desc">'+t('guide_loading')+'</p></div>';
   try{
-    const r=await fetch('/api/schema');const d=await r.json();
+    var r=await fetch('/api/schema');var d=await r.json();
     var h='<div class="panel">';
     h+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">';
     h+='<h2 style="margin:0">CLAUDE.md</h2>';
-    h+='<button class="btn btn-outline" id="schemaToggle" onclick="toggleSchemaEdit()">Edit</button>';
+    h+='<button class="btn btn-outline" id="schemaToggle" onclick="toggleSchemaEdit()">'+t('btn_edit')+'</button>';
     h+='</div>';
-    h+='<p class="desc">이 파일이 Claude에게 위키 운영 방법을 알려주는 스키마입니다. 수정하면 다음 Ingest/Query/Lint부터 적용됩니다.</p>';
+    h+='<p class="desc">'+t('schema_desc')+'</p>';
     h+='<div id="schemaView"><div class="md">'+marked.parse(d.content||'(empty)')+'</div></div>';
     h+='<div id="schemaEdit" style="display:none">';
     h+='<textarea class="edit-area" id="schemaArea" style="min-height:500px">'+esc(d.content||'')+'</textarea>';
     h+='<div class="edit-actions">';
-    h+='<button class="btn btn-green" onclick="saveSchema()">Save</button>';
-    h+='<button class="btn btn-outline" onclick="toggleSchemaEdit()">Cancel</button>';
+    h+='<button class="btn btn-green" onclick="saveSchema()">'+t('btn_save')+'</button>';
+    h+='<button class="btn btn-outline" onclick="toggleSchemaEdit()">'+t('btn_cancel')+'</button>';
     h+='</div></div></div>';
     document.getElementById('content').innerHTML=h;
     window._schemaOriginal=d.content||'';
   }catch(e){
-    document.getElementById('content').innerHTML='<div class="panel"><p class="desc" style="color:var(--red)">Error loading CLAUDE.md: '+e.message+'</p></div>';
+    document.getElementById('content').innerHTML='<div class="panel"><p class="desc" style="color:var(--red)">'+t('err_network')+e.message+'</p></div>';
   }
 }
 function toggleSchemaEdit(){

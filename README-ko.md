@@ -23,20 +23,30 @@ Obsidian → "Open folder as vault" → `my-wiki` 선택.
 
 ## 할 수 있는 것
 
+### 언어
+
+대시보드는 영어/한국어를 모두 지원합니다. 헤더 우측 상단의 **EN / 한국어** 토글로 전환할 수 있으며, 선택은 `localStorage`에 저장됩니다.
+
 ### 대시보드에서 (http://localhost:8090)
 
 | 기능 | 설명 |
 |------|------|
-| **Ingest** | 내용 붙여넣기 → `raw/`에 자동 저장 → Claude가 위키 페이지 생성, diff + reasoning 표시 |
-| **Query** | 질문하기 → Claude가 위키 검색, citation 포함 답변 합성. 어떤 파일을 읽었는지 추적 |
-| **Lint** | 건강 검진: 누락 citation, 고아 페이지, 오래된 주장, frontmatter 문제 (16개 체크리스트) |
-| **Reflect** | 최근 ingest 메타 분석 → 새 페이지 제안, 스키마 개선, 부족한 소스 추천 |
-| **History** | git 기반 ingest 이력 + 원클릭 revert |
-| **Provenance** | 페이지별 citation 커버리지 테이블, Claude로 자동 보완 |
-| **Graph** | 인터랙티브 지식 그래프 (드래그, 클릭 이동) |
-| **CLAUDE.md** | LLM 스키마를 대시보드에서 직접 확인/편집 |
-| **Edit/Delete** | 위키 페이지 편집/삭제 |
-| **+ Folder / + Page** | 위키 구조 수동 생성 |
+| **수집 (Ingest)** | 내용 붙여넣기 → `raw/`에 자동 저장 → Claude가 위키 페이지 생성, 변경 내역과 근거 표시 |
+| **질문 (Query)** | 위키에 질문하면 Claude가 관련 페이지를 찾아 인용과 함께 답변 합성, 어떤 파일을 읽었는지 추적 |
+| **검진 (Lint)** | 위키 건강 검진: 누락된 인용, 고아 페이지, 오래된 주장, frontmatter 문제 등 16개 항목 검사 |
+| **성찰 (Reflect)** | 최근 수집·로그·쿼리를 메타 분석 → 새 페이지 제안, 스키마 개선안, 보강이 필요한 주제 추천 |
+| **작성 (Write)** ✨ | 작성 동반자: 위키 지식으로 에세이/글 초안 작성. `[^src-*]` 인용 자동 삽입. 주제·분량·스타일(블로그/학술/해설) 지정 |
+| **비교 (Compare)** ✨ | 두 페이지의 공통점·차이점·시사점을 분석 → `comparison` 타입 페이지로 저장 가능 |
+| **복습 (Review)** ✨ | 30일 이상 갱신되지 않은 active 페이지 목록 → Claude로 최신 관점 반영해 일괄 갱신 |
+| **검색 (Search)** ✨ | 스마트 검색: 전체 위키에 대한 TF-IDF 전문 검색, 점수 순 정렬 + 스니펫 |
+| **Slides** ✨ | 임의 페이지를 Marp 슬라이드 덱 마크다운으로 내보내기 |
+| **소스 추천** ✨ | 위키의 빈 영역을 파악해 다음에 수집하면 좋을 소스 검색어 제안 |
+| **이력 (History)** | git 기반 수집 이력 + 원클릭 되돌리기 |
+| **출처 (Provenance)** | 페이지별 인용 커버리지 테이블, Claude로 자동 보완 |
+| **그래프 (Graph)** | 인터랙티브 지식 그래프 (드래그, 클릭 이동) |
+| **CLAUDE.md** | LLM 스키마를 대시보드에서 직접 확인하고 수정 |
+| **편집 / 삭제** | 위키 페이지 편집 또는 삭제 |
+| **+ 폴더 / + 페이지** | 위키 구조 수동 생성 |
 
 ### CLI에서
 
@@ -136,16 +146,23 @@ CLAUDE.md             LLM 스키마 — frontmatter 규칙, citation 규칙,
 | GET | `/api/query-stats` | 최근 쿼리 wiki ratio 평균 |
 | GET | `/api/index/status` | 현재 인덱싱 전략 |
 | GET | `/api/raw/integrity` | raw/ 변조 체크 |
-| GET | `/api/reflect/status` | 마지막 reflect 날짜 |
-| POST | `/api/ingest` | 소스 ingest (diff, reasoning, 자동 커밋) |
-| POST | `/api/query` | 파일 추적 포함 쿼리 |
-| POST | `/api/query/save` | 쿼리 답변을 위키 페이지로 저장 |
-| POST | `/api/lint` | lint 체크리스트 실행 |
-| POST | `/api/lint/fix` | lint 이슈 자동 수정 |
+| GET | `/api/reflect/status` | 마지막 성찰 실행 날짜 |
+| GET | `/api/review/list` | 30일 이상 갱신되지 않은 페이지 목록 |
+| POST | `/api/ingest` | 소스 수집 (변경 diff, 판단 근거, 자동 커밋) |
+| POST | `/api/query` | 파일 추적 포함 질문 |
+| POST | `/api/query/save` | 답변을 위키 페이지로 저장 |
+| POST | `/api/lint` | 검진 체크리스트 실행 |
+| POST | `/api/lint/fix` | 검진 결과 자동 수정 |
 | POST | `/api/reflect` | 메타 분석 실행 |
-| POST | `/api/provenance/fix` | 페이지 citation 보완 |
+| POST | `/api/write` | 작성 동반자 (주제 → 에세이 초안) |
+| POST | `/api/compare` | 두 페이지 비교, 선택적 저장 |
+| POST | `/api/review/refresh` | 오래된 페이지를 Claude로 갱신 |
+| POST | `/api/slides` | 페이지를 Marp 슬라이드로 내보내기 |
+| POST | `/api/search` | TF-IDF 전문 검색 |
+| POST | `/api/suggest/sources` | 다음에 수집할 소스 제안 |
+| POST | `/api/provenance/fix` | 페이지 인용 보완 |
 | POST | `/api/index/rebuild` | 인덱스 강제 재빌드 |
-| POST | `/api/revert` | ingest 커밋 revert |
+| POST | `/api/revert` | 수집 커밋 되돌리기 |
 | POST | `/api/page` | 페이지 생성 |
 | POST | `/api/page/update` | 페이지 편집 |
 | POST | `/api/page/delete` | 페이지 삭제 |
