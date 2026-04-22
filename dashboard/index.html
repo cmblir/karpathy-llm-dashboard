@@ -109,6 +109,19 @@ main{display:flex;flex-direction:column;overflow:hidden}
 .modal .actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .modal .actions button.danger{background:var(--red);border-color:var(--red);color:#fff}
 
+/* History table */
+.hist-table{width:100%;border-collapse:collapse;font-size:13px}
+.hist-table th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.hist-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.hist-table tr:hover td{background:var(--bg3)}
+.hist-hash{font-family:var(--mono);font-size:12px;color:var(--accent)}
+.hist-source{font-weight:500}
+.hist-date{color:var(--muted);font-size:12px}
+.hist-files{color:var(--muted);font-size:12px;text-align:center}
+.btn-revert{padding:3px 10px;font-size:11px;background:none;border:1px solid var(--red);border-radius:4px;color:var(--red);cursor:pointer}
+.btn-revert:hover{background:var(--red);color:#fff}
+.btn-revert:disabled{opacity:.3;cursor:not-allowed}
+
 /* Graph */
 .graph-wrap{width:100%;height:100%;position:absolute;top:0;left:0}.graph-wrap canvas{width:100%;height:100%}
 
@@ -141,6 +154,7 @@ main{display:flex;flex-direction:column;overflow:hidden}
       <button data-v="query">Query</button>
       <button data-v="lint">Lint</button>
       <button data-v="graph">Graph</button>
+      <button data-v="history">History</button>
       <div class="sep"></div>
       <button onclick="showCreateFolder()">+ Folder</button>
       <button onclick="showCreatePage()">+ Page</button>
@@ -372,6 +386,59 @@ async function doLintFix(){
   }catch(e){res.className='result-box err';res.textContent='Network error: '+e.message;}
 }
 
+// ─── History ───
+async function showHistory(){
+  setView('history');cur=null;
+  document.getElementById('bc').innerHTML='<b>History</b> · Ingest 이력 / Revert';
+  document.getElementById('content').innerHTML='<div class="panel"><h2>Ingest History</h2><p class="desc">Loading...</p></div>';
+  try{
+    const r=await fetch('/api/history');const list=await r.json();
+    var h='<div class="panel"><h2>Ingest History</h2>';
+    h+='<p class="desc">각 Ingest의 git 커밋 이력입니다. Revert로 해당 Ingest가 만든 변경을 되돌릴 수 있습니다.</p>';
+    if(!list.length){
+      h+='<p style="color:var(--muted);padding:20px 0">아직 Ingest 이력이 없습니다.</p>';
+    }else{
+      h+='<table class="hist-table"><thead><tr><th>Hash</th><th>Source</th><th>Date</th><th style="text-align:center">Files</th><th></th></tr></thead><tbody>';
+      for(var i=0;i<list.length;i++){
+        var e=list[i];
+        h+='<tr>';
+        h+='<td class="hist-hash">'+e.hash_short+'</td>';
+        h+='<td class="hist-source">'+esc(e.source)+'</td>';
+        h+='<td class="hist-date">'+e.date+'</td>';
+        h+='<td class="hist-files">'+e.files_changed+'</td>';
+        h+='<td><button class="btn-revert" onclick="doRevert(\''+e.hash+'\',\''+esc(e.source).replace(/'/g,"\\'")+'\')">Revert</button></td>';
+        h+='</tr>';
+      }
+      h+='</tbody></table>';
+    }
+    h+='</div>';
+    document.getElementById('content').innerHTML=h;
+  }catch(e){
+    document.getElementById('content').innerHTML='<div class="panel"><p class="desc" style="color:var(--red)">Error: '+e.message+'</p></div>';
+  }
+}
+
+async function doRevert(hash,sourceName){
+  if(!confirm('Revert: "'+sourceName+'" ingest를 되돌립니다.\n\n해당 커밋이 생성/수정한 파일들이 이전 상태로 복원됩니다.\n계속하시겠습니까?'))return;
+  var btns=document.querySelectorAll('.btn-revert');
+  btns.forEach(function(b){b.disabled=true;});
+  try{
+    var r=await fetch('/api/revert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({commit_hash:hash})});
+    var d=await r.json();
+    if(d.ok){
+      await Promise.all([loadWiki(),loadFolders()]);
+      renderStats();renderSidebar();
+      showHistory();
+    }else{
+      alert('Revert 실패: '+d.error);
+      btns.forEach(function(b){b.disabled=false;});
+    }
+  }catch(e){
+    alert('Error: '+e.message);
+    btns.forEach(function(b){b.disabled=false;});
+  }
+}
+
 // ─── Graph ───
 function showGraph(){
   setView('graph');cur=null;document.getElementById('bc').innerHTML='Knowledge Graph · 노드 클릭으로 이동';
@@ -539,7 +606,7 @@ async function doCreatePage(){const t=document.getElementById('newPageTitle').va
 // ─── Events ───
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));renderSidebar();});
 document.querySelectorAll('.toolbar button[data-v]').forEach(b=>b.onclick=()=>{
-  const v=b.dataset.v;if(v==='graph')showGraph();else if(v==='ingest')showIngest();else if(v==='query')showQuery();else if(v==='lint')showLint();else if(v==='schema')showSchema();else if(v==='guide')showGuide();else if(cur)showPage(cur);});
+  const v=b.dataset.v;if(v==='graph')showGraph();else if(v==='ingest')showIngest();else if(v==='query')showQuery();else if(v==='lint')showLint();else if(v==='history')showHistory();else if(v==='schema')showSchema();else if(v==='guide')showGuide();else if(cur)showPage(cur);});
 document.getElementById('q').oninput=e=>{sq=e.target.value;if(tab!=='pages'){tab='pages';document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.t==='pages'));}renderSidebar();};
 document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)closeModals();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModals();});
