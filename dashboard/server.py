@@ -37,6 +37,64 @@ if not _claude:
 CLAUDE_TOOLS = "Edit,Write,Read,Glob,Grep"
 CLAUDE_TIMEOUT = 180
 
+RAW_ABS = os.path.abspath(str(RAW_DIR))
+
+
+# ─── raw/ 보호 ───
+
+def assert_writable(path):
+    """raw/ 디렉토리 쓰기 차단. raw/는 불변."""
+    abs_path = os.path.abspath(str(path))
+    if abs_path.startswith(RAW_ABS + os.sep) or abs_path == RAW_ABS:
+        raise PermissionError(f"raw/ is immutable: {path}")
+
+
+def assert_raw_create_only(path):
+    """raw/에 새 파일 생성만 허용 (기존 파일 수정/덮어쓰기 금지)."""
+    abs_path = os.path.abspath(str(path))
+    if not abs_path.startswith(RAW_ABS + os.sep):
+        return  # raw/ 밖이면 패스
+    if os.path.exists(abs_path):
+        raise PermissionError(f"raw/ file already exists (immutable): {path}")
+
+
+def dedupe_raw_path(raw_path: Path) -> Path:
+    """raw/에 동일 파일명 있으면 -2, -3 등으로 자동 변경."""
+    if not raw_path.exists():
+        return raw_path
+    stem = raw_path.stem
+    suffix = raw_path.suffix
+    parent = raw_path.parent
+    n = 2
+    while True:
+        candidate = parent / f"{stem}-{n}{suffix}"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
+def _snapshot_raw():
+    """raw/ 파일 해시 스냅샷 (변경 감지용)"""
+    snap = {}
+    for f in RAW_DIR.rglob("*"):
+        if f.is_file() and not f.name.startswith("."):
+            snap[str(f.relative_to(PROJECT_ROOT))] = f.stat().st_mtime
+    return snap
+
+
+_raw_snapshot_at_start = _snapshot_raw()
+
+
+def check_raw_integrity():
+    """raw/ 변경 감지 → 변경된 파일 리스트 반환"""
+    current = _snapshot_raw()
+    modified = []
+    for path, mtime in _raw_snapshot_at_start.items():
+        if path in current and current[path] != mtime:
+            modified.append(path)
+    deleted = [p for p in _raw_snapshot_at_start if p not in current]
+    return {"modified": modified, "deleted": deleted, "ok": not modified and not deleted}
+
 
 # ─── GitManager ───
 
@@ -411,8 +469,9 @@ def _diff_snapshots(before, after):
 
 def do_ingest(title, content, folder=""):
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or f"source-{int(time.time())}"
-    raw_path = RAW_DIR / f"{slug}.md"
+    raw_path = dedupe_raw_path(RAW_DIR / f"{slug}.md")
     raw_path.write_text(content, encoding="utf-8")
+    slug = raw_path.stem  # dedupe로 변경됐을 수 있으므로 갱신
 
     # 1) 스냅샷 before
     snap_before = _snapshot_wiki()
@@ -424,6 +483,7 @@ def do_ingest(title, content, folder=""):
     idx_inst = get_index_instruction(WIKI_DIR)
 
     prompt = f"""{idx_inst}
+중요: raw/ 디렉토리의 파일을 절대 수정/삭제하지 마라. raw/는 불변이다. wiki/에만 쓰기.
 Ingest raw/{slug}.md — 이 소스를 읽고 CLAUDE.md 지침대로 wiki 페이지들을 생성/갱신해. 핵심 내용 논의는 생략하고 바로 실행해.{folder_inst}
 
 작업이 끝나면:
@@ -646,6 +706,10 @@ tags: []
 
 def update_page(filename, content):
     filepath = WIKI_DIR / filename
+    try:
+        assert_writable(filepath)
+    except PermissionError as e:
+        return {"ok": False, "error": str(e)}
     if not filepath.exists():
         return {"ok": False, "error": "Page not found"}
     filepath.write_text(content, encoding="utf-8")
@@ -654,6 +718,10 @@ def update_page(filename, content):
 
 def delete_page(filename):
     filepath = WIKI_DIR / filename
+    try:
+        assert_writable(filepath)
+    except PermissionError as e:
+        return {"ok": False, "error": str(e)}
     if not filepath.exists():
         return {"ok": False, "error": "Page not found"}
     if filename in ("index.md", "log.md", "overview.md"):
@@ -691,6 +759,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(_get_query_stats())
         if path == "/api/index/status":
             return self._json(get_strategy(WIKI_DIR))
+        if path == "/api/raw/integrity":
+            return self._json(check_raw_integrity())
         super().do_GET()
 
     def do_POST(self):

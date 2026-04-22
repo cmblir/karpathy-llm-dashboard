@@ -5,7 +5,7 @@ You are the wiki maintainer for this Obsidian vault. The human browses the wiki 
 ## Directory structure
 
 ```
-raw/              # Immutable source documents (articles, papers, notes, images)
+raw/              # IMMUTABLE source documents — 절대 수정/삭제 금지
 raw/assets/       # Downloaded images (Obsidian attachment folder)
 wiki/             # LLM-maintained wiki pages — you own this entirely
 wiki/index.md     # Content catalog of all pages
@@ -13,6 +13,14 @@ wiki/log.md       # Chronological activity record
 ingest-reports/   # WHY 보고서 (ingest 시 자동 생성)
 .obsidian/        # Obsidian vault settings (do not modify)
 ```
+
+> **CRITICAL: raw/ 불변 정책**
+>
+> `raw/` 디렉토리의 **어떤 파일도 수정하거나 삭제하지 마라.** `raw/`는 불변(immutable)이다.
+> - 읽기만 허용. 쓰기/수정/삭제 절대 금지.
+> - `raw/` 파일에 오류가 있다고 판단되면, 수정하지 말고 `wiki/`에 별도 정정 페이지를 만들어라.
+> - `raw/` 파일을 수정해야 한다고 LLM이 판단하더라도 **거부하라.**
+> - 이 규칙을 위반하면 시스템이 차단한다.
 
 ## Obsidian integration
 
