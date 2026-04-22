@@ -10,6 +10,7 @@ LLM Wiki Dashboard Server
 import json, os, re, shutil, subprocess, sys, time, threading, urllib.parse
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from provenance import build_provenance_graph
 from pathlib import Path
 
 PORT = 8090
@@ -397,6 +398,30 @@ tags:
     return {"ok": True, "filename": f"{slug}.md"}
 
 
+def do_fix_citations(page_filename):
+    """특정 페이지의 citation을 Claude에게 보완시킴"""
+    filepath = WIKI_DIR / page_filename
+    if not filepath.exists():
+        return {"ok": False, "error": "Page not found"}
+    prompt = f"""wiki/{page_filename}을 읽어.
+이 페이지에서 주장(claim)을 하는 문장 중 inline citation [^src-*]이 없는 것을 찾아.
+각 claim에 적절한 [^src-소스슬러그] citation을 추가해.
+
+규칙:
+- citation 형식: 문장 끝에 [^src-소스슬러그]
+- 페이지 하단에 정의 추가: [^src-소스슬러그]: [[source-소스슬러그]]
+- wiki/index.md의 Sources 섹션에 있는 소스만 사용
+- 해당하는 소스가 없으면 citation을 추가하지 마
+- 기존 citation은 유지해
+
+수정 후 결과를 보고해."""
+    ok, out, err = run_claude(prompt)
+    if ok:
+        git_mgr._stage_all()
+        git_mgr._run("commit", "-m", f"citation: fix {page_filename}")
+    return {"ok": ok, "output": out, "error": err}
+
+
 def do_lint():
     prompt = """CLAUDE.md의 Lint 지침대로 wiki 전체를 점검해.
 보고 형식:
@@ -496,6 +521,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "content": content})
         if path == "/api/history":
             return self._json(git_mgr.list_ingests())
+        if path == "/api/provenance":
+            return self._json(build_provenance_graph(WIKI_DIR))
         super().do_GET()
 
     def do_POST(self):
@@ -527,6 +554,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True})
         if path == "/api/revert":
             return self._json(git_mgr.revert_ingest(body.get("commit_hash", "")))
+        if path == "/api/provenance/fix":
+            return self._json(do_fix_citations(body.get("page", "")))
         self.send_error(404)
 
     def _read_body(self):
