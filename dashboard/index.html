@@ -1068,7 +1068,7 @@ async function checkStatus(){
       tip=LANG==='ko'
         ?'이 폴더가 Obsidian에 vault로 등록되지 않음.\n프로젝트 경로: '+(o.project_path||'?')+'\n등록된 vault: '+registered+'\n\n아래 "Register" 버튼을 누르면 자동 등록됩니다.'
         :'This folder is not registered as a vault in Obsidian.\nProject: '+(o.project_path||'?')+'\nRegistered: '+registered+'\n\nClick "Register" below to add it automatically.';
-      registerBtn=' <button class="status-action" onclick="registerObsidianVault()">'+(LANG==='ko'?'Register':'Register')+'</button>';
+      registerBtn=' <button class="status-action" onclick="registerObsidianVault(event)">Register</button>';
     }else{
       label='on · vault_open=' + (o.vault_open?'true':'false');
       if(!o.vault_open){
@@ -1103,23 +1103,35 @@ async function pollChanges(){
 }
 function setDot(did,lid,ok,txt){document.getElementById(did).className='status-dot '+(ok?'ok':'err');document.getElementById(lid).textContent=txt;}
 
-async function registerObsidianVault(){
-  var btn=event&&event.target?event.target:null;
+async function registerObsidianVault(ev){
+  var btn=(ev&&ev.target)?ev.target:null;
   if(btn){btn.disabled=true;btn.textContent='...';}
   try{
     var r=await fetch('/api/obsidian/register',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    var d=await r.json();
+    var text=await r.text();
+    var d;
+    try{d=JSON.parse(text);}catch(e){
+      toast((LANG==='ko'?'서버 응답 파싱 실패: ':'Bad server response: ')+text.substring(0,150),'err');
+      console.error('register response not JSON:',text);
+      if(btn){btn.disabled=false;btn.textContent='Register';}
+      return;
+    }
     if(d.ok){
       var msg=d.action==='already_registered'
-        ?(LANG==='ko'?'이미 등록됨 — open 플래그 활성화':'Already registered — opened')
-        :(LANG==='ko'?'등록 완료! Obsidian을 재시작하면 목록에 나타납니다.':'Registered! Restart Obsidian to see it.');
-      toast(msg,'ok');
+        ?(LANG==='ko'?'이미 등록되어 있음 — open 플래그 활성화':'Already registered — opened')
+        :(LANG==='ko'?'등록 완료! Obsidian 재시작하면 vault 목록에 나타납니다.':'Registered! Restart Obsidian to see it.');
+      toast(msg+' ('+d.config_path+')','ok');
       setTimeout(checkStatus,500);
     }else{
-      toast((LANG==='ko'?'등록 실패: ':'Register failed: ')+(d.error||''),'err');
+      // 서버 에러 발생 시 자세한 정보 표시
+      var errMsg=d.error||'unknown';
+      if(d.endpoint)errMsg+=' [endpoint='+d.endpoint+']';
+      toast((LANG==='ko'?'등록 실패: ':'Register failed: ')+errMsg,'err');
+      console.error('register failed:',d);
     }
   }catch(e){
     toast((LANG==='ko'?'네트워크 오류: ':'Network error: ')+e.message,'err');
+    console.error('register network error:',e);
   }
   if(btn){btn.disabled=false;btn.textContent='Register';}
 }
