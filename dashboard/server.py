@@ -1362,128 +1362,171 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        if path == "/api/status":
-            return self._json(check_status())
-        if path == "/api/wiki":
-            return self._json(build_wiki_data())
-        if path == "/api/folders":
-            return self._json(get_folder_tree())
-        if path == "/api/hash":
-            return self._json({"hash": wiki_hash()})
-        if path == "/api/schema":
-            schema_path = PROJECT_ROOT / "CLAUDE.md"
-            content = schema_path.read_text("utf-8") if schema_path.exists() else ""
-            return self._json({"ok": True, "content": content})
-        if path == "/api/history":
-            return self._json(git_mgr.list_ingests())
-        if path == "/api/provenance":
-            return self._json(build_provenance_graph(WIKI_DIR))
-        if path == "/api/query-stats":
-            return self._json(_get_query_stats())
-        if path == "/api/index/status":
-            return self._json(get_strategy(WIKI_DIR))
-        if path == "/api/raw/integrity":
-            return self._json(check_raw_integrity())
-        if path == "/api/review/list":
-            return self._json(do_review_list())
-        if path == "/api/settings":
-            return self._json({"settings": SETTINGS, "models": AVAILABLE_MODELS})
-        if path == "/api/reflect/status":
-            last = get_last_reflect_date()
-            days_ago = None
-            if last:
-                try:
-                    from datetime import timedelta
-                    d = datetime.strptime(last, "%Y-%m-%d")
-                    days_ago = (datetime.now() - d).days
-                except Exception:
-                    pass
-            return self._json({"last_date": last, "days_ago": days_ago})
-        super().do_GET()
+        try:
+            if path == "/api/status":
+                return self._json(check_status())
+            if path == "/api/wiki":
+                return self._json(build_wiki_data())
+            if path == "/api/folders":
+                return self._json(get_folder_tree())
+            if path == "/api/hash":
+                return self._json({"hash": wiki_hash()})
+            if path == "/api/schema":
+                schema_path = PROJECT_ROOT / "CLAUDE.md"
+                content = schema_path.read_text("utf-8") if schema_path.exists() else ""
+                return self._json({"ok": True, "content": content})
+            if path == "/api/history":
+                return self._json(git_mgr.list_ingests())
+            if path == "/api/provenance":
+                return self._json(build_provenance_graph(WIKI_DIR))
+            if path == "/api/query-stats":
+                return self._json(_get_query_stats())
+            if path == "/api/index/status":
+                return self._json(get_strategy(WIKI_DIR))
+            if path == "/api/raw/integrity":
+                return self._json(check_raw_integrity())
+            if path == "/api/review/list":
+                return self._json(do_review_list())
+            if path == "/api/settings":
+                return self._json({"settings": SETTINGS, "models": AVAILABLE_MODELS})
+            if path == "/api/reflect/status":
+                last = get_last_reflect_date()
+                days_ago = None
+                if last:
+                    try:
+                        from datetime import timedelta
+                        d = datetime.strptime(last, "%Y-%m-%d")
+                        days_ago = (datetime.now() - d).days
+                    except Exception:
+                        pass
+                return self._json({"last_date": last, "days_ago": days_ago})
+            # API 경로인데 매칭 안 됨
+            if path.startswith("/api/"):
+                return self._json({"ok": False, "error": f"Unknown endpoint: {path}"}, code=404)
+            # 정적 파일
+            super().do_GET()
+        except BrokenPipeError:
+            # 클라이언트가 연결을 끊은 경우 — 조용히 무시
+            pass
+        except Exception as e:
+            import traceback
+            err_msg = f"{type(e).__name__}: {e}"
+            print(f"[ERROR] GET {path}: {err_msg}\n{traceback.format_exc()[:1000]}")
+            try:
+                self._json({"ok": False, "error": err_msg, "endpoint": path}, code=500)
+            except Exception:
+                pass
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        body = self._read_body()
+        try:
+            body = self._read_body()
 
-        if path == "/api/ingest":
-            return self._json(do_ingest(body.get("title", ""), body.get("content", ""), body.get("folder", "")))
-        if path == "/api/query":
-            return self._json(do_query(body.get("question", "")))
-        if path == "/api/query/save":
-            return self._json(do_query_save(body.get("title", ""), body.get("content", "")))
-        if path == "/api/lint":
-            return self._json(do_lint())
-        if path == "/api/lint/fix":
-            return self._json(do_lint_fix())
-        if path == "/api/folder":
-            return self._json(create_folder(body.get("name", ""), body.get("parent", "")))
-        if path == "/api/page":
-            return self._json(create_page(body.get("title", ""), body.get("type", "concept"), body.get("folder", ""), body.get("content", "")))
-        if path == "/api/page/update":
-            return self._json(update_page(body.get("filename", ""), body.get("content", "")))
-        if path == "/api/page/delete":
-            return self._json(delete_page(body.get("filename", "")))
-        if path == "/api/schema":
-            schema_path = PROJECT_ROOT / "CLAUDE.md"
-            schema_path.write_text(body.get("content", ""), encoding="utf-8")
-            return self._json({"ok": True})
-        if path == "/api/revert":
-            return self._json(git_mgr.revert_ingest(body.get("commit_hash", "")))
-        if path == "/api/provenance/fix":
-            return self._json(do_fix_citations(body.get("page", "")))
-        if path == "/api/reflect":
-            return self._json(do_reflect(body.get("window", "last-10-ingests")))
-        if path == "/api/write":
-            return self._json(do_write(body.get("topic", ""), body.get("length", "medium"), body.get("style", "blog")))
-        if path == "/api/compare":
-            return self._json(do_compare(body.get("page_a", ""), body.get("page_b", ""), body.get("save_as", "")))
-        if path == "/api/review/refresh":
-            return self._json(do_review_refresh(body.get("filename", "")))
-        if path == "/api/slides":
-            return self._json(do_slides(body.get("page", "")))
-        if path == "/api/search":
-            return self._json(do_search(body.get("query", ""), body.get("top_k", 10)))
-        if path == "/api/suggest/sources":
-            return self._json(do_suggest_sources())
-        if path == "/api/assistant":
-            return self._json(do_assistant_chat(
-                body.get("question", ""),
-                body.get("lang", "en"),
-                body.get("history", []),
-            ))
-        if path == "/api/settings":
-            model = body.get("model", "default")
-            valid = [m["id"] for m in AVAILABLE_MODELS]
-            if model not in valid:
-                return self._json({"ok": False, "error": f"Unknown model: {model}"})
-            SETTINGS["model"] = model
-            _save_settings(SETTINGS)
-            return self._json({"ok": True, "settings": SETTINGS})
-        if path == "/api/index/rebuild":
-            result = rebuild_index(WIKI_DIR)
-            if result["ok"]:
-                git_mgr._stage_all()
-                git_mgr._run("commit", "-m", f"index: rebuild ({result['mode']})")
-            return self._json(result)
-        self.send_error(404)
+            if path == "/api/ingest":
+                return self._json(do_ingest(body.get("title", ""), body.get("content", ""), body.get("folder", "")))
+            if path == "/api/query":
+                return self._json(do_query(body.get("question", "")))
+            if path == "/api/query/save":
+                return self._json(do_query_save(body.get("title", ""), body.get("content", "")))
+            if path == "/api/lint":
+                return self._json(do_lint())
+            if path == "/api/lint/fix":
+                return self._json(do_lint_fix())
+            if path == "/api/folder":
+                return self._json(create_folder(body.get("name", ""), body.get("parent", "")))
+            if path == "/api/page":
+                return self._json(create_page(body.get("title", ""), body.get("type", "concept"), body.get("folder", ""), body.get("content", "")))
+            if path == "/api/page/update":
+                return self._json(update_page(body.get("filename", ""), body.get("content", "")))
+            if path == "/api/page/delete":
+                return self._json(delete_page(body.get("filename", "")))
+            if path == "/api/schema":
+                schema_path = PROJECT_ROOT / "CLAUDE.md"
+                schema_path.write_text(body.get("content", ""), encoding="utf-8")
+                return self._json({"ok": True})
+            if path == "/api/revert":
+                return self._json(git_mgr.revert_ingest(body.get("commit_hash", "")))
+            if path == "/api/provenance/fix":
+                return self._json(do_fix_citations(body.get("page", "")))
+            if path == "/api/reflect":
+                return self._json(do_reflect(body.get("window", "last-10-ingests")))
+            if path == "/api/write":
+                return self._json(do_write(body.get("topic", ""), body.get("length", "medium"), body.get("style", "blog")))
+            if path == "/api/compare":
+                return self._json(do_compare(body.get("page_a", ""), body.get("page_b", ""), body.get("save_as", "")))
+            if path == "/api/review/refresh":
+                return self._json(do_review_refresh(body.get("filename", "")))
+            if path == "/api/slides":
+                return self._json(do_slides(body.get("page", "")))
+            if path == "/api/search":
+                return self._json(do_search(body.get("query", ""), body.get("top_k", 10)))
+            if path == "/api/suggest/sources":
+                return self._json(do_suggest_sources())
+            if path == "/api/assistant":
+                return self._json(do_assistant_chat(
+                    body.get("question", ""),
+                    body.get("lang", "en"),
+                    body.get("history", []),
+                ))
+            if path == "/api/settings":
+                model = body.get("model", "default")
+                valid = [m["id"] for m in AVAILABLE_MODELS]
+                if model not in valid:
+                    return self._json({"ok": False, "error": f"Unknown model: {model}"})
+                SETTINGS["model"] = model
+                _save_settings(SETTINGS)
+                return self._json({"ok": True, "settings": SETTINGS})
+            if path == "/api/index/rebuild":
+                result = rebuild_index(WIKI_DIR)
+                if result["ok"]:
+                    git_mgr._stage_all()
+                    git_mgr._run("commit", "-m", f"index: rebuild ({result['mode']})")
+                return self._json(result)
+            # 매칭 안 된 API 경로
+            return self._json({"ok": False, "error": f"Unknown endpoint: {path}"}, code=404)
+        except BrokenPipeError:
+            pass
+        except Exception as e:
+            import traceback
+            err_msg = f"{type(e).__name__}: {e}"
+            print(f"[ERROR] POST {path}: {err_msg}\n{traceback.format_exc()[:1000]}")
+            try:
+                self._json({"ok": False, "error": err_msg, "endpoint": path}, code=500)
+            except Exception:
+                pass
 
     def _read_body(self):
         length = int(self.headers.get("Content-Length", 0))
+        if length == 0:
+            return {}
         raw = self.rfile.read(length)
+        if not raw:
+            return {}
         try:
-            return json.loads(raw)
+            text = raw.decode("utf-8").strip()
+            if not text:
+                return {}
+            return json.loads(text)
         except Exception:
             return {}
 
-    def _json(self, data):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", len(body))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
+    def _json(self, data, code=200):
+        try:
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        except Exception as e:
+            # 직렬화 불가 시 최소한의 에러 응답
+            body = json.dumps({"ok": False, "error": f"serialization failed: {e}"}).encode("utf-8")
+            code = 500
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", len(body))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+        except BrokenPipeError:
+            pass
 
     def do_OPTIONS(self):
         self.send_response(200)
