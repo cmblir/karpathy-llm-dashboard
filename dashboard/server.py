@@ -463,6 +463,34 @@ def wiki_hash():
 
 # ─── status ───
 
+def _paths_match(a: str, b: str) -> bool:
+    """두 경로가 같은지 여러 방식으로 검사. 플랫폼/심볼릭 링크/대소문자 대응."""
+    if not a or not b:
+        return False
+    # 1. 문자열 직접 비교
+    if a == b:
+        return True
+    # 2. Path.resolve() 비교 (심볼릭 링크 해석)
+    try:
+        if Path(a).resolve() == Path(b).resolve():
+            return True
+    except Exception:
+        pass
+    # 3. normpath + normcase (Windows/macOS 대소문자 무관)
+    try:
+        if os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b)):
+            return True
+    except Exception:
+        pass
+    # 4. samefile (두 경로가 같은 inode)
+    try:
+        if Path(a).samefile(Path(b)):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _read_obsidian_facts():
     """Obsidian으로부터 사실(fact)만 읽어서 반환. 판단/라벨 없음.
 
@@ -472,6 +500,8 @@ def _read_obsidian_facts():
         vault_registered: bool (이 프로젝트가 vault로 등록됨)
         vault_open: bool | None (등록된 vault의 open 플래그. 등록 안됐으면 None)
         vault_last_ts: int | None (마지막 접근 timestamp in ms)
+        project_path: str (디버깅용 — 현재 프로젝트 절대경로)
+        registered_vaults: list[str] (디버깅용 — obsidian.json의 모든 vault 경로)
     """
     facts = {
         "process_running": False,
@@ -479,36 +509,48 @@ def _read_obsidian_facts():
         "vault_registered": False,
         "vault_open": None,
         "vault_last_ts": None,
+        "project_path": str(PROJECT_ROOT.resolve()),
+        "registered_vaults": [],
     }
 
-    # 프로세스
+    # 프로세스 — macOS/Linux(pgrep), Windows(tasklist) 모두 지원
     try:
-        r = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True, timeout=3)
-        facts["process_running"] = r.returncode == 0
+        if sys.platform == "win32":
+            r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Obsidian.exe"],
+                               capture_output=True, text=True, timeout=5)
+            facts["process_running"] = "Obsidian.exe" in r.stdout
+        else:
+            r = subprocess.run(["pgrep", "-x", "Obsidian"], capture_output=True, timeout=3)
+            facts["process_running"] = r.returncode == 0
     except Exception:
         pass
 
-    # config 찾기
+    # config 찾기 — 여러 OS 경로 지원
     home = Path.home()
-    for p in [
-        home / "Library/Application Support/obsidian/obsidian.json",
-        home / ".config/obsidian/obsidian.json",
-        home / "AppData/Roaming/obsidian/obsidian.json",
-    ]:
+    candidates = [
+        home / "Library/Application Support/obsidian/obsidian.json",  # macOS
+        home / ".config/obsidian/obsidian.json",                       # Linux
+        home / ".var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json",  # Flatpak
+        home / "AppData/Roaming/obsidian/obsidian.json",               # Windows
+        home / "AppData/Roaming/Obsidian/obsidian.json",               # Windows (대문자)
+    ]
+    for p in candidates:
         if p.exists():
             facts["config_path"] = str(p)
             try:
                 cfg = json.loads(p.read_text("utf-8"))
-                project_resolved = PROJECT_ROOT.resolve()
+                project_path = facts["project_path"]
                 for vid, info in (cfg.get("vaults") or {}).items():
                     vpath = info.get("path", "")
-                    if vpath and Path(vpath).resolve() == project_resolved:
+                    if not vpath:
+                        continue
+                    facts["registered_vaults"].append(vpath)
+                    if _paths_match(vpath, project_path):
                         facts["vault_registered"] = True
                         facts["vault_open"] = bool(info.get("open", False))
                         facts["vault_last_ts"] = info.get("ts")
-                        break
-            except Exception:
-                pass
+            except Exception as e:
+                facts["config_error"] = str(e)
             break
     return facts
 
