@@ -111,7 +111,16 @@ owner: yoo
 
 ---
 
-## [MP-09] 프로젝트 내 "목적별 폴더" 템플릿 지원
+## ~~[MP-09] 프로젝트 내 "목적별 폴더" 템플릿 지원~~ ✅ 완료 (2026-04-24)
+- 커밋: df51718
+- `project_registry.TEMPLATE_FOLDERS` + `recommended_folders()`
+- `create_project`에서 템플릿별 폴더 자동 mkdir
+- `/api/templates` 엔드포인트 + New Project 모달에 권장 폴더 미리보기
+- 기존 폴더 선택 드롭다운은 `loadFolders()`로 자동 갱신되어 바로 사용 가능
+
+---
+
+## [MP-09-archived] 프로젝트 내 "목적별 폴더" 템플릿 지원
 - 목표: 사용자가 "페이지를 목적별 폴더에 정리"하고 싶다는 요구 충족
 - 영향 범위: 페이지 생성 플로우
 - 완료 기준:
@@ -123,7 +132,16 @@ owner: yoo
 
 ---
 
-## [MP-10] Obsidian / git / 대시보드 문서 갱신
+## ~~[MP-10] 문서 갱신~~ ✅ 부분 완료 (2026-04-24)
+- 커밋: dfcf66a
+- README.md / README-ko.md에 'Multi-project' / '멀티 프로젝트' 섹션 추가
+- Repository layout에 projects/ templates/ plans/ logs/ project_registry.py 반영
+- API curl 예시 + 템플릿별 권장 폴더 표 + legacy 호환 안내
+- 남은 작업: 대시보드 내 Guide 모달 갱신, 스크린샷 재촬영 — 사용자 확인 후 선택 진행
+
+---
+
+## [MP-10-archived] Obsidian / git / 대시보드 문서 갱신
 - 목표: 멀티 프로젝트 전환 후 사용자 실제 이용 가능 상태 → README/가이드 갱신 (CLAUDE.md §4.5)
 - 영향 범위: `README.md`, `README-ko.md`, `docs/`, 대시보드 내 Guide 모달
 - 완료 기준:
