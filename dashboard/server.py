@@ -13,6 +13,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from provenance import build_provenance_graph
 from index_strategy import get_strategy, get_index_instruction, rebuild_index
 from pathlib import Path
+import project_registry
 
 PORT = 8090
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -1459,6 +1460,79 @@ def do_assistant_chat(question, lang="en", history=None):
         return {"ok": False, "error": "claude CLI not found"}
 
 
+# ─── Projects API (MP-03) ───
+# legacy 모드 유지하면서 projects.json 기반 멀티 프로젝트 기반을 도입.
+# 기존 do_*()는 현재 WIKI_DIR/RAW_DIR 상수를 그대로 사용 (MP-07에서 스코핑).
+
+def list_projects_api():
+    projects = [p.to_dict() for p in project_registry.list_projects()]
+    active_slug = project_registry.get_active_slug()
+    # legacy 정보도 노출
+    legacy = None
+    if project_registry.LEGACY_WIKI.exists():
+        try:
+            legacy_proj = project_registry.get_project()
+            if legacy_proj.is_legacy:
+                legacy = legacy_proj.to_dict()
+        except Exception:
+            legacy = None
+    return {
+        "ok": True,
+        "active": active_slug,
+        "projects": projects,
+        "legacy": legacy,
+        "has_projects": project_registry.has_projects(),
+    }
+
+
+def get_active_project_api():
+    try:
+        p = project_registry.get_project()
+        return {"ok": True, "project": p.to_dict()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def create_project_api(slug_hint, title, description, model, template):
+    try:
+        p = project_registry.create_project(
+            slug_hint=slug_hint or title,
+            title=title,
+            description=description,
+            model=model,
+            template=template,
+        )
+        return {"ok": True, "project": p.to_dict()}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def switch_project_api(slug):
+    try:
+        p = project_registry.switch_project(slug)
+        return {"ok": True, "project": p.to_dict()}
+    except KeyError as e:
+        return {"ok": False, "error": str(e)}
+
+
+def update_project_api(slug, **fields):
+    # None 값은 버림
+    cleaned = {k: v for k, v in fields.items() if v is not None}
+    try:
+        p = project_registry.update_project_settings(slug, **cleaned)
+        return {"ok": True, "project": p.to_dict()}
+    except KeyError as e:
+        return {"ok": False, "error": str(e)}
+    except TypeError as e:
+        return {"ok": False, "error": str(e)}
+
+
+def delete_project_api(slug, confirm):
+    return project_registry.delete_project(slug, confirm=confirm)
+
+
 # ─── CRUD ───
 
 def create_folder(name, parent=""):
@@ -1530,6 +1604,10 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             if path == "/api/status":
                 return self._json(check_status())
+            if path == "/api/projects":
+                return self._json(list_projects_api())
+            if path == "/api/projects/active":
+                return self._json(get_active_project_api())
             if path == "/api/wiki":
                 return self._json(build_wiki_data())
             if path == "/api/folders":
@@ -1652,6 +1730,28 @@ class Handler(SimpleHTTPRequestHandler):
                     git_mgr._stage_all()
                     git_mgr._run("commit", "-m", f"index: rebuild ({result['mode']})")
                 return self._json(result)
+            if path == "/api/projects/create":
+                return self._json(create_project_api(
+                    body.get("slug", ""),
+                    body.get("title", ""),
+                    body.get("description", ""),
+                    body.get("model", "default"),
+                    body.get("template", ""),
+                ))
+            if path == "/api/projects/switch":
+                return self._json(switch_project_api(body.get("slug", "")))
+            if path == "/api/projects/update":
+                return self._json(update_project_api(
+                    body.get("slug", ""),
+                    model=body.get("model"),
+                    title=body.get("title"),
+                    description=body.get("description"),
+                ))
+            if path == "/api/projects/delete":
+                return self._json(delete_project_api(
+                    body.get("slug", ""),
+                    bool(body.get("confirm", False)),
+                ))
             # 매칭 안 된 API 경로
             return self._json({"ok": False, "error": f"Unknown endpoint: {path}"}, code=404)
         except BrokenPipeError:
