@@ -546,12 +546,13 @@ main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
   <div class="field"><label>Title</label><input type="text" id="newProjTitle" placeholder="LLM Papers"></div>
   <div class="field"><label>Slug (선택)</label><input type="text" id="newProjSlug" placeholder="자동 생성됨 (영숫자+하이픈)"></div>
   <div class="field"><label>Description</label><input type="text" id="newProjDesc" placeholder="이 프로젝트의 목적"></div>
-  <div class="field"><label>Template</label><select id="newProjTemplate">
+  <div class="field"><label>Template</label><select id="newProjTemplate" onchange="previewProjectFolders()">
     <option value="">generic (기본)</option>
     <option value="llm-research">llm-research</option>
     <option value="reading-log">reading-log</option>
     <option value="personal-notes">personal-notes</option>
   </select></div>
+  <div class="field"><label>권장 폴더 (자동 생성)</label><div id="newProjFolderPreview" style="font-size:11px;color:var(--muted);font-family:var(--mono);padding:8px 10px;background:var(--bg3);border-radius:var(--r-sm);border:1px solid var(--border)">loading...</div></div>
   <div class="field"><label>Model</label><select id="newProjModel"></select></div>
   <div class="actions"><button onclick="closeModals()">Cancel</button><button class="primary" onclick="doCreateProject()">Create</button></div>
 </div></div>
@@ -896,8 +897,26 @@ async function onProjectChange(){
   toast('Project: '+(slug||'(legacy)'), 'ok');
 }
 
-function openNewProjectModal(){
-  // model select 채우기
+var TEMPLATE_DEFS = null;
+async function loadTemplates(){
+  if (TEMPLATE_DEFS) return TEMPLATE_DEFS;
+  try{
+    var r = await _origFetch('/api/templates');
+    var d = await r.json();
+    TEMPLATE_DEFS = d.templates || [];
+  }catch(e){ TEMPLATE_DEFS = []; }
+  return TEMPLATE_DEFS;
+}
+function previewProjectFolders(){
+  var key = document.getElementById('newProjTemplate').value;
+  var preview = document.getElementById('newProjFolderPreview');
+  if (!preview || !TEMPLATE_DEFS) return;
+  var tmpl = TEMPLATE_DEFS.find(function(t){return t.name===key;});
+  var folders = (tmpl && tmpl.folders) || [];
+  preview.textContent = folders.length ? folders.map(function(f){return 'wiki/'+f+'/';}).join('  ·  ') : '(없음)';
+}
+
+async function openNewProjectModal(){
   var ms = document.getElementById('newProjModel');
   if (ms) ms.innerHTML = MODELS.map(function(m){
     return '<option value="'+m.id+'">'+m.label+'</option>';
@@ -906,6 +925,8 @@ function openNewProjectModal(){
   document.getElementById('newProjSlug').value='';
   document.getElementById('newProjDesc').value='';
   document.getElementById('newProjTemplate').value='';
+  await loadTemplates();
+  previewProjectFolders();
   document.getElementById('modalNewProject').classList.add('show');
   setTimeout(function(){document.getElementById('newProjTitle').focus();},50);
 }

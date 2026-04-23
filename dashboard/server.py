@@ -1725,6 +1725,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(list_projects_api())
             if path == "/api/projects/active":
                 return self._json(get_active_project_api())
+            if path == "/api/templates":
+                names = project_registry.list_template_names()
+                out = [{"name": "", "label": "generic", "folders": project_registry.recommended_folders("")}]
+                out.extend({"name": n, "label": n, "folders": project_registry.recommended_folders(n)} for n in names)
+                return self._json({"ok": True, "templates": out})
             if path == "/api/wiki":
                 return self._json(build_wiki_data(q_project))
             if path == "/api/folders":

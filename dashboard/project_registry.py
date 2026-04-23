@@ -231,6 +231,21 @@ def get_project(slug: str | None = None) -> Project:
 
 # ─── CRUD ───
 
+# 템플릿별 권장 wiki/ 하위 폴더. 프로젝트 생성 시 자동 스캐폴드.
+# 키는 templates/ 디렉터리명 및 "" (generic).
+TEMPLATE_FOLDERS: dict[str, list[str]] = {
+    "": ["sources", "entities", "concepts", "techniques", "analyses"],
+    "llm-research": ["sources", "models", "techniques", "concepts", "entities", "benchmarks", "analyses"],
+    "reading-log": ["sources", "authors", "ideas", "quotes", "reviews"],
+    "personal-notes": ["daily", "topics", "people", "projects"],
+}
+
+
+def recommended_folders(template_name: str) -> list[str]:
+    """주어진 템플릿의 권장 폴더 목록."""
+    return TEMPLATE_FOLDERS.get(template_name or "", TEMPLATE_FOLDERS[""])
+
+
 def list_template_names() -> list[str]:
     """`templates/` 바로 아래 디렉터리 중 CLAUDE.md를 가진 것만 허용."""
     if not TEMPLATES_DIR.is_dir():
@@ -327,6 +342,11 @@ def create_project(
     (root / "ingest-reports").mkdir()
     (root / "reflect-reports").mkdir()
     (root / "plans").mkdir()
+
+    # 템플릿 권장 폴더 스캐폴드. 화이트리스트에 없는 템플릿이면 generic fallback.
+    tmpl_key = template if template in list_template_names() else ""
+    for folder in recommended_folders(tmpl_key):
+        (root / "wiki" / folder).mkdir(exist_ok=True)
 
     # 스타터 wiki 파일 (최소)
     today = datetime.now().strftime("%Y-%m-%d")
