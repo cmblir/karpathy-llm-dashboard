@@ -1052,17 +1052,29 @@ async function checkStatus(){
     // Obsidian: 프로세스가 꺼졌으면 vault 정보는 stale이므로 표시 안 함
     var o=s.obsidian||{};
     var label='';
+    var tip='';
     if(!o.process_running){
       label='off';
+      tip='Obsidian 프로세스가 실행되지 않음';
     }else if(!o.config_path){
       label='on · config not found';
+      tip='Obsidian은 실행 중이지만 config 파일을 찾을 수 없습니다. Obsidian을 한 번이라도 실행하여 config가 생성되도록 하세요.';
     }else if(!o.vault_registered){
       label='on · vault not registered';
+      var registered=(o.registered_vaults||[]).join(' | ')||'(none)';
+      tip='이 폴더가 Obsidian에 vault로 등록되지 않음.\n프로젝트 경로: '+(o.project_path||'?')+'\n등록된 vault: '+registered+'\n\n해결: Obsidian에서 "Open folder as vault" → 이 폴더 선택';
     }else{
       label='on · vault_open=' + (o.vault_open?'true':'false');
+      if(!o.vault_open){
+        tip='이 폴더는 등록되어 있지만 현재 열려있지 않습니다. Obsidian에서 vault 전환 또는 실행하세요.';
+      }else{
+        tip='연결 정상';
+      }
     }
     var connected=!!(o.process_running && o.vault_registered && o.vault_open);
     setDot('dotObsidian','lblObsidian',connected,label);
+    var lbl=document.getElementById('lblObsidian');
+    if(lbl&&lbl.parentElement)lbl.parentElement.title=tip;
   }catch(e){
     setDot('dotClaude','lblClaude',false,'');
     setDot('dotObsidian','lblObsidian',false,'');
