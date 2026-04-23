@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -210,15 +211,63 @@ def get_project(slug: str | None = None) -> Project:
 
 # ─── CRUD ───
 
+def list_template_names() -> list[str]:
+    """`templates/` 바로 아래 디렉터리 중 CLAUDE.md를 가진 것만 허용."""
+    if not TEMPLATES_DIR.is_dir():
+        return []
+    out = []
+    for child in TEMPLATES_DIR.iterdir():
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        if (child / "CLAUDE.md").is_file():
+            out.append(child.name)
+    return sorted(out)
+
+
 def _copy_template(template_name: str, dest: Path) -> None:
     """templates/<name>/CLAUDE.md를 dest/CLAUDE.md로 복사. 없으면 generic.
 
-    placeholder {{TOPIC}} {{PURPOSE}}는 나중에 create_project에서 replace.
+    보안: template_name은 `list_template_names()`의 화이트리스트 + 슬래시/점 불허.
+    traversal 시도(`../foo`, `a/b` 등)는 generic 폴백으로 강등.
+
+    placeholder {{TOPIC}} {{PURPOSE}}는 create_project에서 replace.
     """
-    src_dir = TEMPLATES_DIR / template_name
-    if not (src_dir / "CLAUDE.md").exists():
-        src_dir = TEMPLATES_DIR  # generic fallback
-    dest.write_text((src_dir / "CLAUDE.md").read_text("utf-8"), encoding="utf-8")
+    generic = TEMPLATES_DIR / "CLAUDE.md"
+
+    safe_name = (template_name or "").strip()
+    allowed = set(list_template_names())
+    bad = ("/" in safe_name) or ("\\" in safe_name) or (".." in safe_name) or safe_name.startswith(".")
+    if not safe_name or bad or safe_name not in allowed:
+        # generic fallback (templates/CLAUDE.md)
+        src_file = generic
+    else:
+        candidate = TEMPLATES_DIR / safe_name / "CLAUDE.md"
+        # resolve 후 TEMPLATES_DIR 아래인지 재확인 (심볼릭 링크 등 방어)
+        try:
+            resolved = candidate.resolve(strict=True)
+            if not str(resolved).startswith(str(TEMPLATES_DIR.resolve()) + "/"):
+                src_file = generic
+            else:
+                src_file = resolved
+        except FileNotFoundError:
+            src_file = generic
+
+    if not src_file.is_file():
+        # generic조차 없으면 최소 스텁
+        dest.write_text("# Wiki\n\n(no template available)\n", encoding="utf-8")
+        return
+    dest.write_text(src_file.read_text("utf-8"), encoding="utf-8")
+
+
+# server.py에서 주입하는 모델 검증 훅. 기본값은 통과(레거시 호환).
+# 반환 True면 허용, False면 거부.
+_model_validator = lambda m: True  # noqa: E731
+
+
+def set_model_validator(fn) -> None:
+    """Inject model allowlist validator (to avoid circular import with server)."""
+    global _model_validator
+    _model_validator = fn
 
 
 def create_project(
@@ -231,6 +280,7 @@ def create_project(
     """신규 프로젝트 생성.
 
     - slug_hint → make_slug → 중복 체크
+    - model은 `set_model_validator`로 주입된 검증기 통과해야 함
     - projects/<slug>/ 디렉터리 + 기본 파일 생성
     - projects.json에 등록, active로 설정
     """
@@ -239,6 +289,8 @@ def create_project(
     slug = make_slug(slug_hint or title)
     if not slug:
         raise ValueError("invalid slug")
+    if not _model_validator(model):
+        raise ValueError(f"invalid model: {model!r}")
 
     reg = _load_registry()
     for e in reg.get("projects", []):
@@ -318,6 +370,8 @@ def update_project_settings(slug: str, *, model: str | None = None, title: str |
     for e in projects:
         if e.get("slug") == slug:
             if model is not None:
+                if not _model_validator(model):
+                    raise ValueError(f"invalid model: {model!r}")
                 e["model"] = model
                 # .settings.json과 동기화
                 sf = PROJECTS_DIR / slug / ".settings.json"
@@ -348,9 +402,15 @@ def delete_project(slug: str, confirm: bool = False) -> dict:
     src = PROJECTS_DIR / slug
     trash = PROJECTS_DIR / ".trash"
     trash.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # ms + 충돌 시 counter. shutil.move는 dest가 존재하는 디렉터리면
+    # src를 그 안으로 넣어버리기 때문에 유일한 이름을 반드시 확보해야 함.
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     dest = trash / f"{slug}-{ts}"
-    src.rename(dest)
+    n = 0
+    while dest.exists():
+        n += 1
+        dest = trash / f"{slug}-{ts}-{n}"
+    shutil.move(str(src), str(dest))
 
     reg["projects"] = [e for e in projects if e.get("slug") != slug]
     if reg.get("active") == slug:

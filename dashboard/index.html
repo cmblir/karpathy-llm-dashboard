@@ -748,15 +748,16 @@ function applySidebar(){
   var app=document.getElementById('app');
   var hidden=localStorage.getItem(SIDE_HIDDEN_KEY)==='1';
   app.classList.toggle('side-hidden',hidden);
+  var handle=document.getElementById('sideHandle');
   if(!hidden){
     var w=parseInt(localStorage.getItem(SIDE_W_KEY))||280;
     w=Math.max(220,Math.min(500,w));
-    // .app 자체에 inline으로 설정 (--side-w는 .side-hidden이 override 가능)
     app.style.setProperty('--side-w',w+'px');
-    var handle=document.getElementById('sideHandle');
     if(handle)handle.style.left=w+'px';
   }else{
-    var handle=document.getElementById('sideHandle');
+    // 인라인 --side-w는 .app.side-hidden{--side-w:0px} 클래스 룰보다 우선도가 높아
+    // 반드시 제거해야 컬럼이 실제로 0px로 접힘.
+    app.style.removeProperty('--side-w');
     if(handle)handle.style.left='';
   }
 }

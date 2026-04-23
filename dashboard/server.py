@@ -52,6 +52,9 @@ AVAILABLE_MODELS = [
     {"id": "default", "label": "Default", "desc": "CLI 기본 모델 사용"},
 ]
 
+_ALLOWED_MODEL_IDS = {m["id"] for m in AVAILABLE_MODELS}
+project_registry.set_model_validator(lambda m: m in _ALLOWED_MODEL_IDS)
+
 
 def _load_settings():
     if SETTINGS_FILE.exists():
@@ -411,11 +414,29 @@ def _get_query_stats(n=20):
 
 # ─── wiki data ───
 
-def build_wiki_data():
+def _resolve_project(slug=None):
+    """slug → Project.
+
+    - slug가 빈값/None: active → legacy 순으로 폴백 (project_registry.get_project 기본 동작)
+    - slug가 구체적 값이지만 레지스트리에 없으면 KeyError 전파 (호출측이 404 처리)
+    """
+    return project_registry.get_project(slug or None)
+
+
+def build_wiki_data(project_slug=None):
+    proj = _resolve_project(project_slug)
+    wiki_dir = proj.wiki_dir
+    raw_dir = proj.raw_dir
     pages, nodes, edges = [], [], []
     type_counts, node_ids = {}, set()
-    for md in sorted(WIKI_DIR.rglob("*.md")):
-        rel = md.relative_to(WIKI_DIR)
+    if not wiki_dir.exists():
+        return {
+            "project": proj.slug, "pages": [], "graph": {"nodes": [], "edges": []}, "log": [],
+            "stats": {"total_pages": 0, "raw_sources": 0, "type_counts": {}, "total_links": 0,
+                      "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M")},
+        }
+    for md in sorted(wiki_dir.rglob("*.md")):
+        rel = md.relative_to(wiki_dir)
         filename = str(rel)
         text = md.read_text(encoding="utf-8")
         meta, body = parse_fm(text)
@@ -439,12 +460,13 @@ def build_wiki_data():
             node_ids.add(e["to"])
             nodes.append({"id": e["to"], "label": e["to"].replace(".md", "").replace("-", " ").title(), "type": "missing"})
     log_entries = []
-    lf = WIKI_DIR / "log.md"
+    lf = wiki_dir / "log.md"
     if lf.exists():
         _, lb = parse_fm(lf.read_text("utf-8"))
         log_entries = [{"date": m.group(1), "action": m.group(2), "title": m.group(3)} for m in LOG_ENTRY_RE.finditer(lb)]
-    raw_count = sum(1 for f in RAW_DIR.rglob("*") if f.is_file() and not f.name.startswith(".") and "assets" not in f.parts) if RAW_DIR.exists() else 0
+    raw_count = sum(1 for f in raw_dir.rglob("*") if f.is_file() and not f.name.startswith(".") and "assets" not in f.parts) if raw_dir.exists() else 0
     return {
+        "project": proj.slug,
         "pages": pages,
         "graph": {"nodes": nodes, "edges": edges},
         "log": log_entries,
@@ -452,29 +474,36 @@ def build_wiki_data():
     }
 
 
-def get_folder_tree():
-    tree = {"name": "wiki", "path": "", "children": [], "pages": []}
-    for f in sorted(WIKI_DIR.glob("*.md")):
+def get_folder_tree(project_slug=None):
+    proj = _resolve_project(project_slug)
+    wiki_dir = proj.wiki_dir
+    tree = {"project": proj.slug, "name": "wiki", "path": "", "children": [], "pages": []}
+    if not wiki_dir.exists():
+        return tree
+    for f in sorted(wiki_dir.glob("*.md")):
         tree["pages"].append(f.name)
-    for d in sorted(WIKI_DIR.iterdir()):
+    for d in sorted(wiki_dir.iterdir()):
         if d.is_dir() and not d.name.startswith("."):
             sub = {"name": d.name, "path": d.name, "children": [], "pages": []}
             for f in sorted(d.rglob("*.md")):
-                sub["pages"].append(str(f.relative_to(WIKI_DIR)))
+                sub["pages"].append(str(f.relative_to(wiki_dir)))
             for sd in sorted(d.iterdir()):
                 if sd.is_dir() and not sd.name.startswith("."):
-                    sub["children"].append({"name": sd.name, "path": str(sd.relative_to(WIKI_DIR)), "pages": [str(f.relative_to(WIKI_DIR)) for f in sorted(sd.rglob("*.md"))]})
+                    sub["children"].append({"name": sd.name, "path": str(sd.relative_to(wiki_dir)), "pages": [str(f.relative_to(wiki_dir)) for f in sorted(sd.rglob("*.md"))]})
             tree["children"].append(sub)
     return tree
 
 
-def wiki_hash():
+def wiki_hash(project_slug=None):
     """wiki/ 변경 감지용 간단 해시 — 파일 수 + 총 mtime"""
+    proj = _resolve_project(project_slug)
+    wiki_dir = proj.wiki_dir
     total = 0
     count = 0
-    for md in WIKI_DIR.rglob("*.md"):
-        total += int(md.stat().st_mtime * 1000)
-        count += 1
+    if wiki_dir.exists():
+        for md in wiki_dir.rglob("*.md"):
+            total += int(md.stat().st_mtime * 1000)
+            count += 1
     return f"{count}:{total}"
 
 
@@ -1601,7 +1630,15 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        qs = urllib.parse.parse_qs(parsed.query or "")
+        q_project = (qs.get("project", [""])[0] or "").strip() or None
         try:
+            # 미지 slug는 조기 404
+            if q_project is not None:
+                try:
+                    project_registry.get_project(q_project)
+                except KeyError as e:
+                    return self._json({"ok": False, "error": str(e)}, code=404)
             if path == "/api/status":
                 return self._json(check_status())
             if path == "/api/projects":
@@ -1609,23 +1646,25 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/projects/active":
                 return self._json(get_active_project_api())
             if path == "/api/wiki":
-                return self._json(build_wiki_data())
+                return self._json(build_wiki_data(q_project))
             if path == "/api/folders":
-                return self._json(get_folder_tree())
+                return self._json(get_folder_tree(q_project))
             if path == "/api/hash":
-                return self._json({"hash": wiki_hash()})
+                return self._json({"hash": wiki_hash(q_project)})
             if path == "/api/schema":
-                schema_path = PROJECT_ROOT / "CLAUDE.md"
-                content = schema_path.read_text("utf-8") if schema_path.exists() else ""
-                return self._json({"ok": True, "content": content})
+                proj = _resolve_project(q_project)
+                content = proj.claude_md.read_text("utf-8") if proj.claude_md.exists() else ""
+                return self._json({"ok": True, "project": proj.slug, "content": content})
             if path == "/api/history":
                 return self._json(git_mgr.list_ingests())
             if path == "/api/provenance":
-                return self._json(build_provenance_graph(WIKI_DIR))
+                proj = _resolve_project(q_project)
+                return self._json(build_provenance_graph(proj.wiki_dir))
             if path == "/api/query-stats":
                 return self._json(_get_query_stats())
             if path == "/api/index/status":
-                return self._json(get_strategy(WIKI_DIR))
+                proj = _resolve_project(q_project)
+                return self._json(get_strategy(proj.wiki_dir))
             if path == "/api/raw/integrity":
                 return self._json(check_raw_integrity())
             if path == "/api/claude/diagnose":
