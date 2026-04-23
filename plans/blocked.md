@@ -5,10 +5,37 @@ created: 2026-04-23
 
 # Blocked
 
-현재 비어 있음. MP-04(마이그레이션), MP-05(프로젝트 삭제), MP-10(문서 갱신) 실행 시
-판단이 필요한 결정은 이곳으로 이동.
+---
+
+## [2026-04-23 20:45] BLOCK-MP-04 기존 콘텐츠 마이그레이션
+
+**원본 큐 항목**: MP-04 `projects/karpathy-llm/`로 wiki/raw/ingest-reports/reflect-reports/query-log.jsonl/CLAUDE.md 이동
+**시도 횟수**: 0 (자율모드에서 실행하지 않음)
+**블록 사유**:
+- 위험도 `high` — `today-queue.md` 명시. §21.8에 따라 자율모드 금지.
+- 대량 `git mv`, 루트 레이아웃 변경, 실행 중인 대시보드 서버(pid 94329) 경로 기반 재시작 요구.
+- Q-1~Q-4 (아래) 결정이 전제.
+
+**필요한 판단/정보** (사용자):
+- Q-1 단일 repo vs 프로젝트별 repo
+- Q-2 Obsidian vault 스코프
+- Q-3 slug 규칙 (기본: `make_slug` + 중복 검사)
+- Q-4 삭제 정책 (기본: `projects/.trash/` soft delete)
+
+**실행 시 체크리스트** (사용자 승인 후):
+1. `git mv` 5건 (wiki, raw, ingest-reports, reflect-reports, query-log.jsonl)
+2. `git mv CLAUDE.md projects/karpathy-llm/CLAUDE.md` + 루트에 얇은 CLAUDE.md 재생성
+3. `.dashboard-settings.json` → `projects/karpathy-llm/.settings.json` (model 값 이전 후 원본 삭제)
+4. `projects.json`에 `karpathy-llm` 등록 + `active` 설정
+5. 서버 재시작 후 `/api/projects`, `/api/wiki?project=karpathy-llm` 스모크 테스트 — 주의: MP-07 미완 시 `/api/wiki`는 여전히 legacy 경로를 참조해 깨질 수 있음. MP-07 선행 필요.
+
+**관련 커밋**: 8c0750d (MP-01), 18b0cd9 (MP-02), bcf7f32 (MP-03)
+
+---
 
 ## 결정 대기 중인 설계 포인트
+
+## 결정 대기 중인 설계 포인트 (MP-04 실행 전 필수)
 
 - **[Q-1] 프로젝트별 git repo 분리 여부**
   - 옵션 A: 단일 repo + `projects/<slug>/` 서브디렉터리 커밋 (권장, 간단)

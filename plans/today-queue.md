@@ -10,41 +10,28 @@ owner: yoo
 
 ---
 
-## [MP-01] 저장소 레이아웃 재설계 (설계만, 파일 이동 없음)
-- 목표: 프로젝트 격리 구조 문서화
-- 영향 범위: 루트 레이아웃, `server.py` 상수, CLAUDE.md
-- 완료 기준:
-  - 제안 디렉터리 트리가 `plans/architecture-multiproject.md`에 정리됨
-  - 경로 resolver 함수 시그니처 초안 (project_root(name) / wiki_dir(name) / raw_dir(name))
-  - 루트에 유지할 것 vs 프로젝트 스코프로 내릴 것 구분 확정
-- 위험도: low
+## ~~[MP-01] 저장소 레이아웃 재설계~~ ✅ 완료 (2026-04-23)
+- 결과: `plans/architecture-multiproject.md`
+- 커밋: 8c0750d
 
 ---
 
-## [MP-02] `projects/` 루트 + `projects.json` 레지스트리 도입
-- 목표: `projects/` 디렉터리 생성 + `projects.json`(프로젝트 목록, active_project) 스키마 정의
-- 영향 범위: 신규 파일
-- 완료 기준:
-  - `projects/` 존재
-  - `projects.json` 스키마: `{ "active": "<slug>", "projects": [{"slug","title","description","model","created","last_used"}] }`
-  - 기존 콘텐츠는 아직 이동하지 않음 (MP-04에서 수행)
-- 위험도: low
+## ~~[MP-02] `projects/` 루트 + `projects.json` 레지스트리~~ ✅ 완료 (2026-04-23)
+- 결과: `projects/`, `projects.json`, `templates/{CLAUDE.md,llm-research,reading-log,personal-notes}`
+- 커밋: 18b0cd9
 
 ---
 
-## [MP-03] `server.py` 프로젝트 resolver 도입
-- 목표: `WIKI_DIR`/`RAW_DIR` 상수를 함수로 치환. 모든 경로 접근을 resolver 경유.
-- 영향 범위: `dashboard/server.py` 전반, `dashboard/index_strategy.py`, `dashboard/provenance.py`
-- 완료 기준:
-  - `get_project(name=None)` → dataclass (paths, settings) 반환
-  - 모든 do_*() 함수가 project 인자(또는 current) 받도록 시그니처 변경
-  - 하위호환: project 인자 생략 시 `projects.json.active` 사용
-- 위험도: medium (서버 전체 리팩토링)
+## ~~[MP-03] `server.py` 프로젝트 resolver (부분 완료)~~ ⚠️ 기반만 (2026-04-23)
+- 완료: `dashboard/project_registry.py` 모듈 + `/api/projects*` 엔드포인트 + legacy 폴백
+- 커밋: bcf7f32
+- 남은 과제(MP-07로 이관): 기존 do_ingest/do_query/do_lint 등에서 `WIKI_DIR`/`RAW_DIR`를 resolver 기반으로 대체
 
 ---
 
-## [MP-04] 기존 콘텐츠 → `projects/karpathy-llm/` 마이그레이션
-- 목표: 현재 `wiki/ raw/ CLAUDE.md ingest-reports/ reflect-reports/ query-log.jsonl`를 프로젝트 하위로 이전
+## [MP-04] 기존 콘텐츠 → `projects/karpathy-llm/` 마이그레이션 🚨 BLOCKED
+- 위험도: high → 자율모드 금지 (§21.8). 사용자 승인 필요.
+- `plans/blocked.md` [BLOCK-MP-04] 참조
 - 영향 범위: 루트 디렉터리 대규모 이동
 - 완료 기준:
   - `git mv`로 history 보존 이전
@@ -52,7 +39,6 @@ owner: yoo
   - `.dashboard-settings.json`의 model 값을 프로젝트 `.settings.json`으로 복사
   - 루트 `README.md`의 경로 예시 갱신
   - 서버 재시작 후 대시보드 정상 작동 확인
-- 위험도: high (사용자 승인 필수 — 되돌리기는 git revert)
 
 ---
 
