@@ -42,7 +42,14 @@ owner: yoo
 
 ---
 
-## [MP-05] `/api/projects` CRUD 엔드포인트
+## ~~[MP-05] `/api/projects` CRUD 엔드포인트~~ ✅ 완료 (MP-03에서 동시 구현, 2026-04-23)
+
+원래 항목은 아래 — MP-03 커밋(bcf7f32)에서 `/api/projects`, `/api/projects/create`,
+`/switch`, `/update`, `/delete` 모두 완성.
+
+---
+
+## [MP-05-archived] `/api/projects` CRUD 엔드포인트
 - 목표: 프로젝트 목록/생성/전환/삭제 API
 - 영향 범위: `server.py`
 - 완료 기준:
@@ -65,7 +72,13 @@ owner: yoo
 
 ---
 
-## [MP-07] 기존 API 엔드포인트 project 스코핑
+## ~~[MP-07] 기존 API 엔드포인트 project 스코핑~~ ✅ 완료 (2026-04-23 ~ 2026-04-24)
+- Partial (읽기): cb04d81 — `/api/wiki`, `/api/folders`, `/api/hash`, `/api/schema`, `/api/provenance`, `/api/index/status`에 `?project=<slug>`, 미지 slug 404
+- Full (쓰기/Claude 호출): 1f50ddb — 모든 `do_*` + CRUD + `run_claude` cwd + GitManager + `assert_writable` 전면 스코핑
+
+---
+
+## [MP-07-archived] 기존 API 엔드포인트 project 스코핑
 - 목표: `/api/ingest, /api/query, /api/lint, /api/lint/fix, /api/reflect, /api/write, /api/compare, /api/review/*, /api/search, /api/page*, /api/folder, /api/slides, /api/revert, /api/history, /api/provenance, /api/suggest/sources, /api/raw/integrity, /api/index/*, /api/schema, /api/wiki, /api/folders, /api/hash, /api/query-stats, /api/assistant` — 전부 project 스코프 수용
 - 영향 범위: 모든 핸들러
 - 완료 기준:
@@ -76,7 +89,16 @@ owner: yoo
 
 ---
 
-## [MP-08] 헤더 프로젝트 선택기 (UI)
+## ~~[MP-08] 헤더 프로젝트 선택기 (UI)~~ ✅ 완료 (2026-04-24)
+- 커밋: fb39871
+- 헤더 `<select#projectSelect>` + 생성/삭제 버튼 + 모달 2종 (New Project / Delete Project)
+- `window.fetch` monkey-patch로 모든 `/api/*` 호출에 `CURRENT_PROJECT` 자동 주입 (기존 fetch 코드 수정 불필요)
+- Cmd/Ctrl+P 단축키 → 프로젝트 선택기 포커스
+- 모델 선택기가 현재 프로젝트 모델로 자동 반영
+
+---
+
+## [MP-08-archived] 헤더 프로젝트 선택기 (UI)
 - 목표: 대시보드 상단에 프로젝트 드롭다운 추가 (모델 선택기 옆)
 - 영향 범위: `dashboard/index.html`
 - 완료 기준:
