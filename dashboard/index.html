@@ -2404,6 +2404,20 @@ document.getElementById('q').oninput=e=>{sq=e.target.value;if(tab!=='pages'){tab
 document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)closeModals();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModals();});
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// 안전한 fetch → JSON. 빈 응답/HTML 응답도 처리.
+async function fetchJson(url,options){
+  var r=await fetch(url,options);
+  var text=await r.text();
+  if(!text||!text.trim()){
+    return {ok:false,error:'Empty response from server (status '+r.status+')',_httpStatus:r.status};
+  }
+  try{
+    return JSON.parse(text);
+  }catch(e){
+    return {ok:false,error:'Invalid JSON from server (status '+r.status+'): '+text.substring(0,200),_httpStatus:r.status,_raw:text};
+  }
+}
 init();
 </script>
 </body>
