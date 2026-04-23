@@ -60,18 +60,20 @@ button,input,select,textarea{font-family:inherit;color:inherit}
 button{cursor:pointer;transition:all var(--d-fast) var(--ease);}
 button:active{transform:scale(0.97);}
 
-/* ── Layout ── */
-.app{display:grid;grid-template-columns:var(--side-w) 1fr;grid-template-rows:52px 1fr;height:100vh;position:relative;transition:grid-template-columns var(--d-med) var(--ease)}
-.app.side-hidden{--side-w:0px}
-.app.side-hidden .side{display:none}
+/* ── Layout (Flexbox) ── */
+/* header는 위에 고정, 아래 body-row는 flex로 사이드바 + 메인 나란히. */
+.app{display:flex;flex-direction:column;height:100vh;position:relative;overflow:hidden}
+.body-row{flex:1;display:flex;min-height:0;position:relative}
+.side{flex-shrink:0;width:var(--side-w);overflow:hidden;transition:width var(--d-med) var(--ease)}
+.app.side-hidden .side{width:0}
 
-/* 사이드바 리사이즈 핸들 */
-.side-handle{position:absolute;top:52px;left:var(--side-w);bottom:0;width:6px;transform:translateX(-3px);cursor:ew-resize;z-index:40;transition:background var(--d-fast)}
+/* 사이드바 리사이즈 핸들 — body-row 기준 */
+.side-handle{position:absolute;top:0;left:var(--side-w);bottom:0;width:6px;transform:translateX(-3px);cursor:ew-resize;z-index:40;transition:background var(--d-fast), left var(--d-med) var(--ease)}
 .side-handle:hover,.side-handle.dragging{background:var(--accent-dim)}
 .app.side-hidden .side-handle{display:none}
 
 /* ── Header ── */
-header{grid-column:1/-1;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:12px;backdrop-filter:blur(8px);position:relative;z-index:30}
+header{flex-shrink:0;height:52px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:12px;backdrop-filter:blur(8px);position:relative;z-index:30}
 header h1{font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-0.01em;display:flex;align-items:center;gap:8px}
 header h1 .logo-mark{width:18px;height:18px;border:1.5px solid var(--text);border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;transform:rotate(45deg)}
 header h1 .logo-mark span{transform:rotate(-45deg);color:var(--text)}
@@ -141,7 +143,7 @@ header h1 .logo-mark span{transform:rotate(-45deg);color:var(--text)}
 .status-label{color:var(--muted)}.status-label b{color:var(--text);font-weight:500;font-family:var(--mono);font-size:10px}
 
 /* ── Main ── */
-main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 .toolbar{display:flex;align-items:center;padding:8px 18px;border-bottom:1px solid var(--border);gap:4px;background:var(--bg);position:relative;z-index:20}
 .toolbar .bc{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;max-width:50%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .toolbar .bc b{color:var(--text);font-weight:600}
@@ -447,10 +449,7 @@ main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
 /* ── 반응형 ── */
 @media (max-width:900px){
-  .app{grid-template-columns:0 1fr}
-  .side{position:absolute;left:0;top:52px;bottom:0;width:280px;z-index:30;box-shadow:var(--shadow-lg)}
-  .app.side-visible .side{display:flex}
-  .app:not(.side-visible) .side{display:none}
+  .side{width:280px}
   .side-handle{display:none}
   .page,.panel,.folder-view{padding:24px 20px}
 }
@@ -465,25 +464,27 @@ main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
     <div class="hstats" id="hstats"></div>
     <button id="langToggle" class="h-side-toggle" onclick="toggleLang()" title="Language" style="margin-left:4px;font-family:var(--font);font-weight:600">EN</button>
   </header>
-  <aside class="side">
-    <input type="text" id="q" data-i18n-ph="search_placeholder" placeholder="Search pages...">
-    <div class="tabs">
-      <button class="on" data-t="tree" data-i18n="tab_tree">Tree</button>
-      <button data-t="pages" data-i18n="tab_pages">Pages</button>
-      <button data-t="log" data-i18n="tab_log">Log</button>
-    </div>
-    <div class="slist" id="slist"></div>
-    <div class="status-bar" id="statusBar">
-      <div class="status-row"><div class="status-dot loading" id="dotClaude"></div><span class="status-label"><span data-i18n="status_claude">Claude CLI</span> <b id="lblClaude">checking...</b></span></div>
-      <div class="status-row"><div class="status-dot loading" id="dotObsidian"></div><span class="status-label">Obsidian <b id="lblObsidian">checking...</b></span></div>
-    </div>
-  </aside>
-  <main>
-    <div class="idx-banner" id="idxBanner"><span id="idxBannerText"></span><button class="idx-close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
-    <div class="toolbar" id="toolbar"></div>
-    <div class="content" id="content"></div>
-  </main>
-  <div class="side-handle" id="sideHandle"></div>
+  <div class="body-row">
+    <aside class="side">
+      <input type="text" id="q" data-i18n-ph="search_placeholder" placeholder="Search pages...">
+      <div class="tabs">
+        <button class="on" data-t="tree" data-i18n="tab_tree">Tree</button>
+        <button data-t="pages" data-i18n="tab_pages">Pages</button>
+        <button data-t="log" data-i18n="tab_log">Log</button>
+      </div>
+      <div class="slist" id="slist"></div>
+      <div class="status-bar" id="statusBar">
+        <div class="status-row"><div class="status-dot loading" id="dotClaude"></div><span class="status-label"><span data-i18n="status_claude">Claude CLI</span> <b id="lblClaude">checking...</b></span></div>
+        <div class="status-row"><div class="status-dot loading" id="dotObsidian"></div><span class="status-label">Obsidian <b id="lblObsidian">checking...</b></span></div>
+      </div>
+    </aside>
+    <main>
+      <div class="idx-banner" id="idxBanner"><span id="idxBannerText"></span><button class="idx-close" onclick="this.parentElement.classList.remove('show')">&times;</button></div>
+      <div class="toolbar" id="toolbar"></div>
+      <div class="content" id="content"></div>
+    </main>
+    <div class="side-handle" id="sideHandle"></div>
+  </div>
 </div>
 
 <div class="toast-wrap" id="toastWrap"></div>
@@ -748,18 +749,13 @@ function applySidebar(){
   var app=document.getElementById('app');
   var hidden=localStorage.getItem(SIDE_HIDDEN_KEY)==='1';
   app.classList.toggle('side-hidden',hidden);
+  // --side-w는 항상 사용자 드래그 폭(또는 기본 280). .app.side-hidden .side{width:0}
+  // 규칙이 숨김 처리를 담당하므로 여기서는 값만 기록하면 됨.
+  var w=parseInt(localStorage.getItem(SIDE_W_KEY))||280;
+  w=Math.max(220,Math.min(500,w));
+  app.style.setProperty('--side-w',w+'px');
   var handle=document.getElementById('sideHandle');
-  if(!hidden){
-    var w=parseInt(localStorage.getItem(SIDE_W_KEY))||280;
-    w=Math.max(220,Math.min(500,w));
-    app.style.setProperty('--side-w',w+'px');
-    if(handle)handle.style.left=w+'px';
-  }else{
-    // 인라인 --side-w는 .app.side-hidden{--side-w:0px} 클래스 룰보다 우선도가 높아
-    // 반드시 제거해야 컬럼이 실제로 0px로 접힘.
-    app.style.removeProperty('--side-w');
-    if(handle)handle.style.left='';
-  }
+  if(handle)handle.style.left=(hidden?0:w)+'px';
 }
 function toggleSidebar(){
   var hidden=localStorage.getItem(SIDE_HIDDEN_KEY)==='1';
