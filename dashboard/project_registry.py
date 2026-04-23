@@ -169,6 +169,26 @@ def _entry_to_project(entry: dict) -> Project:
     )
 
 
+def all_raw_dirs() -> list[Path]:
+    """모든 raw/ 경로 (legacy + 각 프로젝트). 쓰기 보호 판정에 사용."""
+    out = [LEGACY_RAW]
+    if PROJECTS_DIR.exists():
+        for p in PROJECTS_DIR.iterdir():
+            if p.is_dir() and not p.name.startswith("."):
+                out.append(p / "raw")
+    return out
+
+
+def is_protected_raw(path: Path | str) -> bool:
+    """주어진 경로가 어떤 raw/ 안에 있으면 True (불변 보호 대상)."""
+    s = str(Path(path).absolute())
+    for r in all_raw_dirs():
+        rs = str(r.absolute())
+        if s == rs or s.startswith(rs + "/"):
+            return True
+    return False
+
+
 def list_projects() -> list[Project]:
     reg = _load_registry()
     return [_entry_to_project(e) for e in reg.get("projects", [])]
