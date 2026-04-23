@@ -19,3 +19,8 @@ Pages created: [[index]], [[log]], [[overview]]
 Source: `raw/제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt.md`
 Pages created: [[source-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt|source-nanochat-karpathy]], [[andrej-karpathy]], [[nanochat]], [[nanogpt]], [[llm-training-pipeline]], [[midtraining]], [[llm101n]]
 Pages updated: [[index]], [[overview]]
+
+## [2026-04-23] ingest | GPT-1: Improving Language Understanding by Generative Pre-Training (2018)
+Source: `raw/제목-gpt-1-improving-language-understanding-by-generative-pre-training-2018.md`
+Pages created: [[source-제목-gpt-1-improving-language-understanding-by-generative-pre-training-2018|source-gpt-1]], [[gpt-1]], [[openai]], [[alec-radford]], [[bookcorpus]], [[transformer-decoder-only]], [[pretrain-finetune-paradigm]]
+Pages updated: [[andrej-karpathy]], [[nanogpt]], [[llm-training-pipeline]], [[index]], [[overview]]
