@@ -15,7 +15,7 @@ status: active
 
 # Andrej Karpathy
 
-AI 연구자. 전 OpenAI 창립 멤버이자 전 Tesla AI 디렉터.[^src-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt]
+AI 연구자. 전 [[openai|OpenAI]] 창립 멤버이자 전 Tesla AI 디렉터.[^src-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt]
 
 ## 주요 오픈소스 프로젝트
 
