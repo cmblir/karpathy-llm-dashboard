@@ -2,7 +2,7 @@
 title: Index
 type: overview
 created: 2026-04-22
-last_updated: 2026-04-22
+last_updated: 2026-04-23
 tags:
   - meta
 ---
@@ -13,18 +13,14 @@ All wiki pages, organized by type. Updated on every ingest.
 
 ## Overview
 - [[overview]] — wiki scope and current state
-
 ## Sources
-<!-- Source summary pages will appear here as you ingest documents -->
-
+- [[source-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt|Andrej Karpathy의 nanochat — 100달러로 만드는 나만의 ChatGPT]]
 ## Entities
-<!-- Entity pages will appear here -->
-
+- [[andrej-karpathy|Andrej Karpathy]]
+- [[llm101n|LLM101n]]
+- [[nanochat|nanochat]]
+- [[nanogpt|nanoGPT]]
 ## Concepts
-<!-- Concept pages will appear here -->
-
+- [[llm-training-pipeline|LLM 학습 파이프라인]]
 ## Techniques
-<!-- Technique pages will appear here -->
-
-## Analyses
-<!-- Analysis and comparison pages will appear here -->
+- [[midtraining|중간학습 (Midtraining)]]
