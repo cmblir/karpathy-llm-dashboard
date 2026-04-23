@@ -9,7 +9,7 @@ tags:
   - rl
 created: 2026-04-23
 last_updated: 2026-04-23
-source_count: 1
+source_count: 2
 confidence: high
 status: active
 ---
@@ -17,6 +17,10 @@ status: active
 # LLM 학습 파이프라인
 
 현대 대규모 언어 모델(LLM)을 처음부터 구축하는 전체 과정. 단순 사전학습을 넘어 사용자와 대화 가능한 모델로 만들기까지 여러 단계를 거친다.[^src-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt]
+
+## 역사적 배경
+
+이 파이프라인의 기원은 2018년 [[gpt-1|GPT-1]] 논문의 [[pretrain-finetune-paradigm|비지도 사전학습 + 지도 미세조정]] 2단계 패러다임이다.[^src-제목-gpt-1-improving-language-understanding-by-generative-pre-training-2018] 이후 중간학습·RL·배포 단계가 추가되며 오늘날의 멀티 스테이지 파이프라인으로 확장되었다.
 
 ## 단계별 구성
 
@@ -39,3 +43,5 @@ status: active
 ---
 
 [^src-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt]: [[source-제목-안드레이-카파시andrej-karpathy의-nanochat-100달러로-만드는-나만의-chatgpt]]
+
+[^src-제목-gpt-1-improving-language-understanding-by-generative-pre-training-2018]: [[source-제목-gpt-1-improving-language-understanding-by-generative-pre-training-2018]]
