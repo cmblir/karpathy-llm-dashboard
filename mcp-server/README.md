@@ -71,8 +71,23 @@ tools available. Try:
 
 ## Register with Claude Desktop
 
-Add this block to your `claude_desktop_config.json` (replace the absolute
-paths with what `install.sh` printed):
+Note: `claude.ai` (web) does **not** support local stdio MCP servers; it
+only accepts remote HTTP/SSE Connectors. Use the desktop app for a local
+Memex vault.
+
+**Quit Claude Desktop fully before editing the config** — Cmd+Q on macOS,
+or right-click the Dock icon → Quit. Closing the window alone leaves the
+background process running and your edits get overwritten on shutdown.
+
+Open the config file:
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Add `memex` under `mcpServers` (replace the absolute paths with what
+`install.sh` printed):
 
 ```json
 {
@@ -85,7 +100,42 @@ paths with what `install.sh` printed):
 }
 ```
 
-Restart Claude Desktop. The 14 tools appear under the plug icon.
+If the file already has other MCP servers, just add the `memex` entry
+inside the existing `mcpServers` block. Restart Claude Desktop. The 14
+tools appear under the plug icon.
+
+## Use chat content as wiki sources
+
+Once registered, no special syntax is needed — just ask in plain
+language and Claude composes the right tool calls.
+
+**Save the current conversation as a source**
+
+> Save this conversation to my Memex wiki as a source titled
+> "Transformer scaling discussion".
+
+Behavior: Claude composes a markdown summary of the chat, calls
+`add_raw_source` to write it under `raw/` (append-only), creates or
+updates entity / concept pages with inline `[^src-*]` citations, appends
+`wiki/log.md`, and runs `git_commit`.
+
+**Drop a one-shot concept**
+
+> Add what we just discussed about "scaling laws vs data quality" as an
+> analysis page.
+
+Claude calls `search` to find related pages, creates a new page with
+`create_page(type=analysis)`, links it from existing entities, and
+commits.
+
+**Pin the schema once per session**
+
+For longer sessions, ask Claude to load the rules first so frontmatter,
+citation format, and contradiction policy are followed:
+
+> Call `memex.get_instructions` once, then we will treat this whole chat
+> as a wiki ingestion session — anything factual goes into the wiki with
+> citations, anything I mark as "draft" stays just in chat.
 
 ## Suggested first prompt
 

@@ -106,15 +106,89 @@ search, and maintain the wiki **directly** as a Model Context Protocol server.
 `folder_tree`, `stats`, `recent_log`, `list_raw_sources`, `get_instructions`,
 `add_raw_source`, `create_page`, `update_page`, `create_folder`, `git_commit`.
 
+### One-time install
+
 ```bash
-bash mcp-server/install.sh                # one-time: creates a venv and installs `mcp`
-claude mcp add --scope user memex \       # register with Claude Code
-  -- "$PWD/mcp-server/.venv/bin/python" "$PWD/mcp-server/memex_mcp.py"
-claude mcp list                           # verify
+bash mcp-server/install.sh   # creates a local venv and installs the `mcp` SDK
 ```
 
-For Claude Desktop, paste the JSON snippet `install.sh` prints into
-`claude_desktop_config.json` and restart.
+The script prints the exact register command and JSON snippet for both
+clients. Pick whichever you use.
+
+### Use it from Claude Code
+
+```bash
+claude mcp add --scope user memex \
+  -- "$PWD/mcp-server/.venv/bin/python" "$PWD/mcp-server/memex_mcp.py"
+claude mcp list   # verify
+```
+
+`memex` now shows up in every Claude Code session, even outside this repo.
+
+### Use it from Claude Desktop (claude.ai web is not supported — the Desktop app is)
+
+Open the Claude Desktop config file. **Quit Claude Desktop fully before
+editing** (Cmd+Q on macOS — the Dock icon stays alive otherwise).
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Add `memex` under `mcpServers` (replace the absolute paths with what
+`install.sh` printed):
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "command": "/Users/<you>/Memex/mcp-server/.venv/bin/python",
+      "args": ["/Users/<you>/Memex/mcp-server/memex_mcp.py"]
+    }
+  }
+}
+```
+
+If the file already has other MCP servers, just add the `memex` entry
+inside the existing `mcpServers` block. Restart Claude Desktop. The plug
+icon should list 14 Memex tools.
+
+> **Why not claude.ai web?** Web Claude only supports remote HTTP/SSE MCP
+> servers via Connectors — it cannot reach a local stdio process. Use
+> Claude Desktop for the local Memex vault.
+
+### Use chat content as wiki sources
+
+Once `memex` is registered, just ask Claude in plain language. The model
+calls the right tools based on what you say.
+
+**Save the current conversation as a source**
+
+> Save this conversation to my Memex wiki as a source titled
+> "Transformer scaling discussion".
+
+What happens: Claude composes a markdown summary of the chat, calls
+`add_raw_source` to write it under `raw/` (append-only), creates or
+updates relevant entity / concept pages with inline `[^src-*]` citations,
+appends `wiki/log.md`, and runs `git_commit`.
+
+**Drop a one-shot concept into the wiki**
+
+> Add what we just discussed about "scaling laws vs data quality" as an
+> analysis page.
+
+Claude calls `search` to look for existing related pages, creates a new
+page with `create_page(type=analysis)`, links it from the closest entity
+pages, and commits.
+
+**Pin the schema once per session**
+
+For longer sessions, ask Claude to load the rules first so frontmatter,
+citation format, and contradiction policy are followed:
+
+> Call `memex.get_instructions` once, then we will treat this whole chat
+> as a wiki ingestion session — anything factual goes into the wiki with
+> citations, anything I mark as "draft" stays just in chat.
 
 The MCP server reuses the same `projects.json` and `wiki/` tree as the
 dashboard — both surfaces stay in sync. `raw/` remains immutable; the
