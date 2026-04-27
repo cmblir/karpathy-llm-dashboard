@@ -98,45 +98,73 @@ Open `http://localhost:8090`. Done.
 
 ---
 
-## Connect Memex to Claude (MCP)
+## Talk to your wiki
 
-Skip the dashboard and let Claude (Code, Desktop, or any MCP client) read,
-search, and maintain the wiki **directly** as a Model Context Protocol server.
-14 tools are exposed: `list_projects`, `list_pages`, `read_page`, `search`,
-`folder_tree`, `stats`, `recent_log`, `list_raw_sources`, `get_instructions`,
-`add_raw_source`, `create_page`, `update_page`, `create_folder`, `git_commit`.
+Memex has **two chatbots**, and most people use both:
 
-### One-time install
+| | What it answers | Setup |
+|---|---|---|
+| **Floating dashboard helper** (the bobbing Claude character at bottom-right) | *About the dashboard itself* — "where do I revert?", "what does Wiki Ratio mean?". Wiki-content questions are redirected to Query. | None — built into the dashboard. |
+| **External Claude (Code or Desktop) over MCP** | *About / inside the wiki* — read, search, write pages, ingest sources, commit. 14 tools exposed. | The 4-step wizard below. |
+
+### MCP setup wizard
+
+<details open>
+<summary><b>Step 1 — Install the server</b> &nbsp;<sub>(once, ~20 seconds)</sub></summary>
 
 ```bash
-bash mcp-server/install.sh   # creates a local venv and installs the `mcp` SDK
+bash mcp-server/install.sh
 ```
 
-The script prints the exact register command and JSON snippet for both
-clients. Pick whichever you use.
+Creates `mcp-server/.venv` with the `mcp` SDK and prints the absolute
+paths you'll paste into your client config. **Keep that output handy**
+for Step 2.
 
-### Use it from Claude Code
+The 14 exposed tools:
+
+| Read-only | Mutating |
+|---|---|
+| `list_projects` `list_pages` `read_page` `search` `folder_tree` `stats` `recent_log` `list_raw_sources` `get_instructions` | `add_raw_source` `create_page` `update_page` `create_folder` `git_commit` |
+</details>
+
+<details>
+<summary><b>Step 2 — Pick your client</b> &nbsp;<sub>(open exactly one)</sub></summary>
+
+<br />
+
+<details>
+<summary>🅰&nbsp; <b>Claude Code</b> &nbsp;— terminal CLI, in or out of this repo</summary>
 
 ```bash
 claude mcp add --scope user memex \
   -- "$PWD/mcp-server/.venv/bin/python" "$PWD/mcp-server/memex_mcp.py"
-claude mcp list   # verify
+
+claude mcp list                       # memex should appear
 ```
 
-`memex` now shows up in every Claude Code session, even outside this repo.
+`memex` is now registered for **every** Claude Code session. To remove:
 
-### Use it from Claude Desktop (claude.ai web is not supported — the Desktop app is)
+```bash
+claude mcp remove memex
+```
+</details>
 
-Open the Claude Desktop config file. **Quit Claude Desktop fully before
-editing** (Cmd+Q on macOS — the Dock icon stays alive otherwise).
+<details>
+<summary>🅱&nbsp; <b>Claude Desktop</b> &nbsp;— macOS / Windows app</summary>
+
+> ⚠️ **Quit Claude Desktop completely first** — `Cmd+Q` on macOS.
+> Closing the window only minimizes; the Dock icon keeps the old config
+> in memory otherwise.
+
+Open the config file:
 
 | OS | Path |
 |---|---|
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-Add `memex` under `mcpServers` (replace the absolute paths with what
-`install.sh` printed):
+Add the `memex` block (use the absolute paths `install.sh` printed —
+replace `<you>` with your username):
 
 ```json
 {
@@ -149,51 +177,97 @@ Add `memex` under `mcpServers` (replace the absolute paths with what
 }
 ```
 
-If the file already has other MCP servers, just add the `memex` entry
-inside the existing `mcpServers` block. Restart Claude Desktop. The plug
-icon should list 14 Memex tools.
+If the file already has an `mcpServers` block, just add the `memex`
+entry inside it. Reopen Claude Desktop. The 🔌 icon (top of the chat
+input) should list **14 Memex tools**.
+</details>
 
-> **Why not claude.ai web?** Web Claude only supports remote HTTP/SSE MCP
-> servers via Connectors — it cannot reach a local stdio process. Use
-> Claude Desktop for the local Memex vault.
+<details>
+<summary>🅲&nbsp; <b>claude.ai web</b> &nbsp;— not supported, and why</summary>
+
+Web Claude only supports remote HTTP / SSE MCP servers via Connectors —
+it cannot reach a local stdio process. Use **Claude Desktop** for the
+local Memex vault, or expose the server over the network with
+`mcp-proxy` if you really need browser access.
+</details>
+</details>
+
+<details>
+<summary><b>Step 3 — Verify</b> &nbsp;<sub>(30 seconds)</sub></summary>
+
+Open a new chat in your client and ask:
+
+> List my Memex projects.
+
+Claude should call `list_projects` and reply with names from
+`projects.json`. If you see *"tool not found"* or *"memex not connected"*:
+
+- Claude Code → re-run `claude mcp list` and check the path.
+- Claude Desktop → confirm the JSON is valid (`python -m json.tool < <config>`),
+  then **fully quit and reopen** (not just close the window).
+</details>
+
+<details>
+<summary><b>Step 4 — Pin the schema</b> &nbsp;<sub>(optional, recommended for long sessions)</sub></summary>
+
+At the start of an ingestion-heavy chat, paste:
+
+> Call `memex.get_instructions` once. From now on treat factual content
+> I share as wiki ingestion — write to the wiki with citations, ask
+> before creating new pages, commit at the end. Anything I mark as
+> *"draft"* stays in chat only.
+
+This loads the project's `CLAUDE.md` (frontmatter rules, citation format,
+contradiction policy) so Claude follows them without you repeating each turn.
+</details>
 
 ### Use chat content as wiki sources
 
-Once `memex` is registered, just ask Claude in plain language. The model
-calls the right tools based on what you say.
+Once `memex` is registered, just talk to Claude in plain language — it
+picks the right tools from intent.
 
-**Save the current conversation as a source**
+| You say… | Claude does |
+|---|---|
+| *"Save this conversation to my Memex wiki as **Transformer scaling discussion**."* | composes a markdown summary → `add_raw_source` → updates affected entity / concept pages with `[^src-*]` citations → appends `wiki/log.md` → `git_commit` |
+| *"Add what we just discussed about **scaling laws vs data quality** as an analysis page."* | `search` for related pages → `create_page(type=analysis)` → links from the closest entities → `git_commit` |
+| *"Show me everything we have on **RLHF** and where sources conflict."* | `search` + `read_page` across hits → synthesized answer with contradictions surfaced |
+| *"Switch the active project to **ml-papers** before we continue."* | `list_projects` → server-side switch → subsequent reads/writes scope to that project |
 
-> Save this conversation to my Memex wiki as a source titled
-> "Transformer scaling discussion".
+### MCP troubleshooting
 
-What happens: Claude composes a markdown summary of the chat, calls
-`add_raw_source` to write it under `raw/` (append-only), creates or
-updates relevant entity / concept pages with inline `[^src-*]` citations,
-appends `wiki/log.md`, and runs `git_commit`.
+<details>
+<summary><b>Claude Desktop doesn't list the <code>memex</code> server</b></summary>
 
-**Drop a one-shot concept into the wiki**
+1. Validate the config is valid JSON:
+   ```bash
+   python -m json.tool < ~/Library/Application\ Support/Claude/claude_desktop_config.json
+   ```
+2. Verify both paths exist:
+   ```bash
+   ls -la /Users/<you>/Memex/mcp-server/.venv/bin/python \
+          /Users/<you>/Memex/mcp-server/memex_mcp.py
+   ```
+3. `Cmd+Q` Claude Desktop, then reopen.
+</details>
 
-> Add what we just discussed about "scaling laws vs data quality" as an
-> analysis page.
+<details>
+<summary><b><code>add_raw_source</code> refused: "file exists"</b></summary>
 
-Claude calls `search` to look for existing related pages, creates a new
-page with `create_page(type=analysis)`, links it from the closest entity
-pages, and commits.
+`raw/` is immutable by design — the tool refuses to overwrite. Use a
+different `slug`, or update the wiki page through `update_page` instead.
+</details>
 
-**Pin the schema once per session**
+<details>
+<summary><b>Tools succeed but writes don't show in the dashboard</b></summary>
 
-For longer sessions, ask Claude to load the rules first so frontmatter,
-citation format, and contradiction policy are followed:
+Both surfaces share `projects.json` and `wiki/`. Reload the dashboard
+page — it polls but doesn't auto-push. Confirm the write committed in
+`wiki/log.md`.
+</details>
 
-> Call `memex.get_instructions` once, then we will treat this whole chat
-> as a wiki ingestion session — anything factual goes into the wiki with
-> citations, anything I mark as "draft" stays just in chat.
-
-The MCP server reuses the same `projects.json` and `wiki/` tree as the
-dashboard — both surfaces stay in sync. `raw/` remains immutable; the
-`add_raw_source` tool refuses to overwrite. Full details in
-[`mcp-server/README.md`](mcp-server/README.md).
+The MCP server and the dashboard share the same `projects.json` and
+`wiki/` tree, so changes from either surface are immediately visible.
+Full tool reference in [`mcp-server/README.md`](mcp-server/README.md).
 
 ---
 
@@ -335,8 +409,8 @@ claude
 
 **3. MCP from anywhere** — once `mcp-server/install.sh` is registered,
 any Claude Code session (in or out of this repo) and Claude Desktop can
-call the 14 Memex tools directly. See the [MCP section](#connect-memex-to-claude-mcp)
-above.
+call the 14 Memex tools directly. See the [Talk to your wiki](#talk-to-your-wiki)
+section above for the 4-step setup wizard.
 
 All three share `projects.json` and the `wiki/` tree — changes are
 immediately visible across surfaces.

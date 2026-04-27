@@ -98,46 +98,71 @@ python dashboard/server.py    # Python 3.10+, pip 의존성 0
 
 ---
 
-## Memex를 Claude에 직접 연결 (MCP)
+## 위키와 대화하기
 
-대시보드를 띄우지 않아도 된다. Memex를 Model Context Protocol 서버로 띄워
-Claude Code, Claude Desktop, 또는 다른 MCP 클라이언트가 위키를 **직접** 읽고
-검색하고 갱신하도록 만들 수 있다. 14개 도구를 노출:
-`list_projects`, `list_pages`, `read_page`, `search`, `folder_tree`, `stats`,
-`recent_log`, `list_raw_sources`, `get_instructions`, `add_raw_source`,
-`create_page`, `update_page`, `create_folder`, `git_commit`.
+Memex에는 **챗봇이 두 개** 있고, 대부분의 사용자는 둘 다 쓴다:
 
-### 1회 설치
+| | 무엇에 답하나 | 설정 |
+|---|---|---|
+| **대시보드 플로팅 도우미** (오른쪽 아래에서 까딱거리는 Claude 캐릭터) | *대시보드 사용법 자체* — "되돌리기는 어디?", "Wiki Ratio가 뭐야?" 같은 질문. 위키 내용 질문은 Query로 리디렉트된다. | 별도 설정 없음 — 대시보드에 내장. |
+| **외부 Claude (Code 또는 Desktop) — MCP 경유** | *위키에 대해, 위키 안에서* — 읽기·검색·작성·소스 수집·커밋. 14개 도구 노출. | 아래 4단계 위저드. |
+
+### MCP 설정 위저드
+
+<details open>
+<summary><b>Step 1 — 서버 설치</b> &nbsp;<sub>(1회, 약 20초)</sub></summary>
 
 ```bash
-bash mcp-server/install.sh   # 로컬 venv 생성 + `mcp` SDK 설치
+bash mcp-server/install.sh
 ```
 
-스크립트가 두 클라이언트에 등록할 정확한 명령어/JSON 스니펫을 출력해준다.
-필요한 쪽만 골라서 쓰면 됨.
+`mcp-server/.venv`를 만들고 `mcp` SDK를 설치한다. 클라이언트 설정에 붙여
+넣을 절대경로를 출력해주니 **그 출력은 Step 2까지 그대로 두자.**
 
-### Claude Code에서 쓰기
+노출되는 14개 도구:
+
+| 읽기 전용 | 쓰기 |
+|---|---|
+| `list_projects` `list_pages` `read_page` `search` `folder_tree` `stats` `recent_log` `list_raw_sources` `get_instructions` | `add_raw_source` `create_page` `update_page` `create_folder` `git_commit` |
+</details>
+
+<details>
+<summary><b>Step 2 — 클라이언트 선택</b> &nbsp;<sub>(하나만 펼쳐서 따라가면 됨)</sub></summary>
+
+<br />
+
+<details>
+<summary>🅰&nbsp; <b>Claude Code</b> &nbsp;— 터미널 CLI. 이 레포 밖에서도 동작.</summary>
 
 ```bash
 claude mcp add --scope user memex \
   -- "$PWD/mcp-server/.venv/bin/python" "$PWD/mcp-server/memex_mcp.py"
-claude mcp list   # 확인
+
+claude mcp list                       # memex가 목록에 떠야 정상
 ```
 
-이제 이 레포 밖에서 띄우는 Claude Code 세션에서도 `memex` 사용 가능.
+이제 모든 Claude Code 세션에서 `memex`를 쓸 수 있다. 제거는:
 
-### Claude Desktop에서 쓰기 (claude.ai 웹은 불가 — 데스크톱 앱만 지원)
+```bash
+claude mcp remove memex
+```
+</details>
 
-Claude Desktop 설정 파일을 연다. **편집 전에 Claude Desktop을 완전히 종료**할 것
-(macOS는 Cmd+Q — Dock 아이콘만 닫으면 백그라운드에서 살아있음).
+<details>
+<summary>🅱&nbsp; <b>Claude Desktop</b> &nbsp;— macOS / Windows 앱</summary>
+
+> ⚠️ **편집 전에 Claude Desktop을 완전히 종료** — macOS는 `Cmd+Q`. 창만
+> 닫으면 Dock에서 살아있는 채로 옛 설정을 들고 있다.
+
+설정 파일을 연다:
 
 | OS | 경로 |
 |---|---|
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-`mcpServers` 아래에 `memex` 항목을 추가 (절대경로는 `install.sh`가 출력한
-값으로 교체):
+`memex` 블록을 추가한다 (절대경로는 `install.sh`가 출력한 값으로 — `<you>`는
+본인 username):
 
 ```json
 {
@@ -150,45 +175,93 @@ Claude Desktop 설정 파일을 연다. **편집 전에 Claude Desktop을 완전
 }
 ```
 
-이미 다른 MCP 서버가 있으면 기존 `mcpServers` 블록 안에 `memex` 항목만
-추가. Claude Desktop 재시작. 플러그 아이콘에 14개 Memex 도구가 보이면 완료.
+이미 `mcpServers` 블록이 있으면 그 안에 `memex` 항목만 추가. Claude Desktop을
+다시 연다. 채팅 입력창 위 🔌 아이콘에 **14개 Memex 도구**가 떠야 정상.
+</details>
 
-> **claude.ai 웹은 왜 안 되나?** 웹 Claude는 Connectors를 통해 원격
-> HTTP/SSE MCP 서버만 연결할 수 있다 — 로컬 stdio 프로세스는 도달 불가.
-> 로컬 Memex vault는 Claude Desktop을 써야 한다.
+<details>
+<summary>🅲&nbsp; <b>claude.ai 웹</b> &nbsp;— 미지원, 그 이유</summary>
+
+웹 Claude는 Connectors를 통한 원격 HTTP/SSE MCP만 지원한다 — 로컬 stdio
+프로세스는 도달 불가. 로컬 Memex vault에는 **Claude Desktop**을 쓰거나,
+정말 브라우저가 필요하면 `mcp-proxy`로 네트워크에 노출시키자.
+</details>
+</details>
+
+<details>
+<summary><b>Step 3 — 동작 확인</b> &nbsp;<sub>(30초)</sub></summary>
+
+새 채팅을 열고 이렇게 물어본다:
+
+> Memex 프로젝트 목록 보여줘.
+
+Claude가 `list_projects`를 호출해 `projects.json`에 있는 이름들을 답하면
+성공. *"tool not found"* 또는 *"memex not connected"*가 뜨면:
+
+- Claude Code → `claude mcp list`로 경로 재확인.
+- Claude Desktop → 설정 JSON이 유효한지 (`python -m json.tool < <설정파일>`)
+  확인하고 **창 닫기가 아니라 완전 종료 후** 다시 켜기.
+</details>
+
+<details>
+<summary><b>Step 4 — 스키마 핀(pin)</b> &nbsp;<sub>(선택, 긴 세션에 권장)</sub></summary>
+
+수집 위주의 긴 세션 첫 메시지로 붙여넣자:
+
+> `memex.get_instructions` 한 번 호출하고, 이제부터 내가 공유하는 사실
+> 정보는 위키 수집으로 다뤄줘 — 인용과 함께 위키에 쓰고, 새 페이지 만들기
+> 전엔 물어보고, 마지막에 커밋해줘. "draft"라고 표시한 건 채팅에만 남기고.
+
+이러면 프로젝트의 `CLAUDE.md` (frontmatter 규칙·인용 형식·모순 정책)가 컨텍스트에
+실려서, 매 턴 반복하지 않아도 규칙을 지켜준다.
+</details>
 
 ### 채팅 내용을 위키 소스로 쓰기
 
-`memex` 등록만 끝나면 자연어로 시키면 된다. 모델이 알아서 적절한 도구를
-호출한다.
+`memex` 등록만 끝나면 그냥 자연어로 말하면 된다 — 모델이 의도를 보고 알아서
+필요한 도구를 호출한다.
 
-**현재 대화를 소스로 저장**
+| 이렇게 말하면… | Claude는 |
+|---|---|
+| *"이 대화를 Memex 위키에 **Transformer scaling 토론**이라는 소스로 저장해줘."* | 마크다운 요약 작성 → `add_raw_source` → 관련 엔티티/컨셉 페이지를 `[^src-*]` 인용과 함께 갱신 → `wiki/log.md` 추가 → `git_commit` |
+| *"방금 얘기한 **scaling laws vs data quality**를 analysis 페이지로 만들어줘."* | `search`로 관련 기존 페이지 확인 → `create_page(type=analysis)` → 가까운 엔티티에서 링크 → `git_commit` |
+| *"**RLHF**에 대해 우리가 가진 모든 자료랑 출처가 충돌하는 지점도 보여줘."* | `search` + `read_page`로 결과 통합 → 모순 지점이 표시된 답 |
+| *"먼저 활성 프로젝트를 **ml-papers**로 바꾸고 이어가자."* | `list_projects` → 서버에서 전환 → 이후 모든 읽기/쓰기가 그 프로젝트로 스코프 |
 
-> 이 대화를 Memex 위키에 소스로 저장해줘. 제목은 "Transformer scaling 토론".
+### MCP 트러블슈팅
 
-동작: Claude가 대화를 마크다운으로 요약 → `add_raw_source`로 `raw/`에
-기록(append-only) → 관련 엔티티/컨셉 페이지를 인라인 `[^src-*]` 인용과 함께
-생성/갱신 → `wiki/log.md` 추가 → `git_commit`까지 자동.
+<details>
+<summary><b>Claude Desktop이 <code>memex</code> 서버를 못 잡는다</b></summary>
 
-**원샷으로 컨셉 추가**
+1. 설정 파일이 유효한 JSON인지 확인:
+   ```bash
+   python -m json.tool < ~/Library/Application\ Support/Claude/claude_desktop_config.json
+   ```
+2. 두 경로가 실제로 존재하는지 확인:
+   ```bash
+   ls -la /Users/<you>/Memex/mcp-server/.venv/bin/python \
+          /Users/<you>/Memex/mcp-server/memex_mcp.py
+   ```
+3. `Cmd+Q`로 Claude Desktop 완전 종료 후 재실행.
+</details>
 
-> 방금 우리가 얘기한 "scaling laws vs data quality"를 analysis 페이지로 만들어줘.
+<details>
+<summary><b><code>add_raw_source</code> 거부: "file exists"</b></summary>
 
-Claude가 `search`로 관련 기존 페이지 확인 → `create_page(type=analysis)`로 새
-페이지 생성 → 가까운 엔티티 페이지에서 링크 → 커밋.
+`raw/`는 설계상 불변이라 도구가 덮어쓰기를 거부한다. 다른 `slug`를 쓰거나,
+위키 페이지 쪽을 `update_page`로 갱신하자.
+</details>
 
-**세션 시작 시 스키마 한 번 로드**
+<details>
+<summary><b>도구는 성공했는데 대시보드에 안 나타난다</b></summary>
 
-긴 세션이면 처음에 규칙을 한 번 읽혀두면 frontmatter·인용 형식·모순 정책을
-지켜서 작업한다:
+두 surface는 같은 `projects.json`·`wiki/`를 공유한다. 대시보드 페이지를
+새로고침하자 — 폴링은 하지만 자동 푸시는 안 한다. 커밋 자체는 `wiki/log.md`로
+확인.
+</details>
 
-> `memex.get_instructions`를 한 번 호출해서 위키 규칙을 파악하고, 이후
-> 우리 대화를 위키 수집 세션으로 다뤄줘 — 사실 정보는 인용과 함께 위키로
-> 들어가고, 내가 "draft"라고 표시한 건 채팅에만 남기고.
-
-MCP 서버는 대시보드와 같은 `projects.json`·`wiki/` 트리를 공유한다 —
-양쪽이 즉시 동기화. `raw/`는 그대로 불변(immutable)이며 `add_raw_source`는
-덮어쓰기를 거부한다. 자세한 내용은
+MCP 서버와 대시보드는 같은 `projects.json`·`wiki/` 트리를 공유하므로,
+어느 쪽에서 변경하든 즉시 반영된다. 도구별 자세한 설명은
 [`mcp-server/README.md`](mcp-server/README.md).
 
 ---
@@ -331,7 +404,7 @@ claude
 
 **3. 어디서든 MCP로** — `mcp-server/install.sh`로 등록하면 Claude Code 세션
 (이 레포 밖에서도)과 Claude Desktop이 14개 Memex 도구를 직접 호출 가능.
-위쪽 [MCP 섹션](#memex를-claude에-직접-연결-mcp) 참조.
+위쪽 [위키와 대화하기](#위키와-대화하기) 섹션의 4단계 위저드 참조.
 
 세 인터페이스 모두 `projects.json`과 `wiki/` 트리를 공유 — 변경사항은 즉시 반영됨.
 
