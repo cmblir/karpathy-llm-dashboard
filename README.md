@@ -558,16 +558,6 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
  </picture>
 </a>
 
-## StarMapper
-
-<a href="https://starmapper.bruniaux.com/cmblir/memex">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://starmapper.bruniaux.com/api/map-image/cmblir/memex?theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://starmapper.bruniaux.com/api/map-image/cmblir/memex?theme=light" />
-    <img alt="StarMapper" src="https://starmapper.bruniaux.com/api/map-image/cmblir/memex" />
-  </picture>
-</a>
-
 ---
 
 ## Keyboard shortcuts
