@@ -548,6 +548,26 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
 
 </details>
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=cmblir/memex&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=cmblir/memex&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=cmblir/memex&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=cmblir/memex&type=date&legend=top-left" />
+ </picture>
+</a>
+
+## StarMapper
+
+<a href="https://starmapper.bruniaux.com/cmblir/memex">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://starmapper.bruniaux.com/api/map-image/cmblir/memex?theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://starmapper.bruniaux.com/api/map-image/cmblir/memex?theme=light" />
+    <img alt="StarMapper" src="https://starmapper.bruniaux.com/api/map-image/cmblir/memex" />
+  </picture>
+</a>
+
 ---
 
 ## Keyboard shortcuts
