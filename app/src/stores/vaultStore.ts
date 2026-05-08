@@ -14,10 +14,11 @@ export interface VaultState {
   openVault: (path: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
   saveFile: (path: string, content: string) => Promise<void>;
+  resolveWikilink: (target: string) => string | null;
   reset: () => void;
 }
 
-export const useVaultStore = create<VaultState>((set) => ({
+export const useVaultStore = create<VaultState>((set, get) => ({
   currentVault: null,
   fileTree: [],
   activeFile: null,
@@ -63,6 +64,10 @@ export const useVaultStore = create<VaultState>((set) => ({
     }
   },
 
+  resolveWikilink(target) {
+    return findFileByStem(get().fileTree, target.toLowerCase());
+  },
+
   reset() {
     set({
       currentVault: null,
@@ -73,6 +78,24 @@ export const useVaultStore = create<VaultState>((set) => ({
     });
   },
 }));
+
+function findFileByStem(nodes: FileNode[], lowerStem: string): string | null {
+  for (const node of nodes) {
+    if (node.kind === "file") {
+      const stem = stripExtension(node.name).toLowerCase();
+      if (stem === lowerStem) return node.path;
+    } else {
+      const found = findFileByStem(node.children, lowerStem);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function stripExtension(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;

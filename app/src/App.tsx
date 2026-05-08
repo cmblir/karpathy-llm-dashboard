@@ -14,6 +14,7 @@ export default function App(): JSX.Element {
   const activeFile = useVaultStore((s) => s.activeFile);
   const openFile = useVaultStore((s) => s.openFile);
   const saveFile = useVaultStore((s) => s.saveFile);
+  const resolveWikilink = useVaultStore((s) => s.resolveWikilink);
   const error = useVaultStore((s) => s.error);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const viewMode = useUIStore((s) => s.viewMode);
@@ -88,8 +89,8 @@ export default function App(): JSX.Element {
                 <Viewer
                   content={draftContent}
                   onLinkClick={(target) => {
-                    // Wikilink resolution is implemented in S5.3.
-                    console.debug("wikilink target", target);
+                    const resolved = resolveWikilink(target);
+                    if (resolved) void openFile(resolved);
                   }}
                 />
               ) : null}
