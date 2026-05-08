@@ -26,7 +26,7 @@ Legend: `[ ]` todo · `[x]` done · `[B]` blocked (see BLOCKED.md)
 - [x] S4.1  verified: 2026-05-09 9168830
 - [x] S4.2  verified: 2026-05-09 bfbd3fb
 - [x] S4.3  verified: 2026-05-09 1798dba
-- [ ] S4.4
+- [x] S4.4  verified: 2026-05-09 5252094
 
 ## S5 — Wikilinks + Backlinks
 - [ ] S5.1
