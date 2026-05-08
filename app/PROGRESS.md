@@ -41,7 +41,7 @@ Legend: `[ ]` todo · `[x]` done · `[B]` blocked (see BLOCKED.md)
 - [x] S6.4  verified: 2026-05-09 9f2437f
 
 ## S7 — Build + Distribution
-- [ ] S7.1
+- [x] S7.1  verified: 2026-05-09 de4c8d1
 - [ ] S7.2
 - [ ] S7.3
 - [ ] S7.4
