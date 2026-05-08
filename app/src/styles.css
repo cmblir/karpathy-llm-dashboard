@@ -40,8 +40,21 @@ button {
 
 .memex-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: var(--memex-sidebar-width, 280px) 4px 1fr;
   height: 100%;
+}
+
+.memex-splitter {
+  cursor: col-resize;
+  background: var(--border);
+  width: 4px;
+  height: 100%;
+  transition: background-color 120ms ease;
+}
+
+.memex-splitter:hover,
+.memex-splitter--dragging {
+  background: var(--accent);
 }
 
 /* Sidebar -------------------------------------------------------------- */

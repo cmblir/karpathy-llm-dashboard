@@ -5,16 +5,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export const SIDEBAR_MIN = 200;
+export const SIDEBAR_MAX = 600;
+export const SIDEBAR_DEFAULT = 280;
+
 export interface UIState {
   expandedFolders: Record<string, boolean>;
+  sidebarWidth: number;
   toggleFolder: (path: string) => void;
   setFolder: (path: string, open: boolean) => void;
+  setSidebarWidth: (width: number) => void;
 }
 
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
       expandedFolders: {},
+      sidebarWidth: SIDEBAR_DEFAULT,
       toggleFolder: (path) =>
         set((state) => ({
           expandedFolders: {
@@ -26,6 +33,10 @@ export const useUIStore = create<UIState>()(
         set((state) => ({
           expandedFolders: { ...state.expandedFolders, [path]: open },
         })),
+      setSidebarWidth: (width) =>
+        set({
+          sidebarWidth: Math.min(Math.max(width, SIDEBAR_MIN), SIDEBAR_MAX),
+        }),
     }),
     {
       name: "memex-ui",
