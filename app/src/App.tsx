@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import Splitter from "./components/Splitter";
 import Editor from "./components/Editor";
 import Viewer from "./components/Viewer";
+import BacklinksPanel from "./components/BacklinksPanel";
 import ModeToggle from "./components/ModeToggle";
 import { useVaultStore } from "./stores/vaultStore";
 import { useUIStore } from "./stores/uiStore";
@@ -101,6 +102,7 @@ export default function App(): JSX.Element {
             </p>
           )}
         </section>
+        <BacklinksPanel />
       </main>
     </div>
   );

@@ -211,6 +211,48 @@ button {
   background: var(--bg-hover);
 }
 
+/* Backlinks ------------------------------------------------------------ */
+.memex-backlinks {
+  border-top: 1px solid var(--border);
+  padding: 1rem 0 0;
+  margin-top: 1rem;
+}
+
+.memex-backlinks__header {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-bottom: 0.5rem;
+}
+
+.memex-backlinks__empty {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.memex-backlinks__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.memex-backlinks__link {
+  text-align: left;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+.memex-backlinks__link:hover {
+  background: var(--bg-hover);
+}
+
 .memex-editor {
   flex: 1;
   min-height: 0;

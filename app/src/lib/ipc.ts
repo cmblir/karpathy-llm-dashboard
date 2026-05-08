@@ -23,10 +23,19 @@ export interface FileContent {
   frontmatter: unknown;
 }
 
+export interface Adjacency {
+  forward: Record<string, string[]>;
+  backward: Record<string, string[]>;
+  unresolved: Record<string, string[]>;
+}
+
 export const ipc = {
   openVault: (path: string) => invoke<VaultMeta>("open_vault", { path }),
   listFiles: (root: string) => invoke<FileNode[]>("list_files", { root }),
   readFile: (path: string) => invoke<FileContent>("read_file", { path }),
   writeFile: (path: string, content: string) =>
     invoke<null>("write_file", { path, content }),
+  parseLinks: (path: string) => invoke<string[]>("parse_links", { path }),
+  buildLinkGraph: (root: string) =>
+    invoke<Adjacency>("build_link_graph", { root }),
 };

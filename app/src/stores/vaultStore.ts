@@ -3,17 +3,19 @@
 
 import { create } from "zustand";
 import { ipc } from "../lib/ipc";
-import type { FileContent, FileNode, VaultMeta } from "../lib/ipc";
+import type { Adjacency, FileContent, FileNode, VaultMeta } from "../lib/ipc";
 
 export interface VaultState {
   currentVault: VaultMeta | null;
   fileTree: FileNode[];
   activeFile: FileContent | null;
+  adjacency: Adjacency | null;
   isLoading: boolean;
   error: string | null;
   openVault: (path: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
   saveFile: (path: string, content: string) => Promise<void>;
+  refreshLinkGraph: () => Promise<void>;
   resolveWikilink: (target: string) => string | null;
   reset: () => void;
 }
@@ -22,6 +24,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   currentVault: null,
   fileTree: [],
   activeFile: null,
+  adjacency: null,
   isLoading: false,
   error: null,
 
@@ -30,14 +33,27 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     try {
       const meta = await ipc.openVault(path);
       const tree = await ipc.listFiles(meta.path);
+      const adjacency = await ipc.buildLinkGraph(meta.path);
       set({
         currentVault: meta,
         fileTree: tree,
+        adjacency,
         activeFile: null,
         isLoading: false,
       });
     } catch (err) {
       set({ error: errorMessage(err), isLoading: false });
+    }
+  },
+
+  async refreshLinkGraph() {
+    const vault = get().currentVault;
+    if (!vault) return;
+    try {
+      const adjacency = await ipc.buildLinkGraph(vault.path);
+      set({ adjacency });
+    } catch (err) {
+      set({ error: errorMessage(err) });
     }
   },
 
@@ -59,6 +75,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
           ? { activeFile: { ...state.activeFile, content }, error: null }
           : { error: null },
       );
+      void get().refreshLinkGraph();
     } catch (err) {
       set({ error: errorMessage(err) });
     }
@@ -73,6 +90,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       currentVault: null,
       fileTree: [],
       activeFile: null,
+      adjacency: null,
       isLoading: false,
       error: null,
     });
