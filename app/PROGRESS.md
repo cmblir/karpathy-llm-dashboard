@@ -5,7 +5,7 @@ Legend: `[ ]` todo · `[x]` done · `[B]` blocked (see BLOCKED.md)
 
 ## S1 — Scaffold
 - [x] S1.1  verified: 2026-05-09 9379ea6
-- [ ] S1.2
+- [x] S1.2  verified: 2026-05-09 2caac27
 - [ ] S1.3
 - [ ] S1.4
 
