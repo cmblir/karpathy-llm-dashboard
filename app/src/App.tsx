@@ -1,19 +1,21 @@
 import type { JSX } from "react";
+import Sidebar from "./components/Sidebar";
 
 export default function App(): JSX.Element {
-  const isDev = import.meta.env.DEV;
   return (
-    <main className="memex-shell">
-      <header className="memex-shell__header">
-        <h1>Memex</h1>
-        <p className="memex-shell__tagline">
-          Desktop wiki for plain markdown vaults.
-        </p>
-      </header>
-      <section className="memex-shell__status" aria-live="polite">
-        <p>Scaffold ready.</p>
-        {isDev ? <p className="memex-shell__badge">dev mode</p> : null}
-      </section>
-    </main>
+    <div className="memex-layout">
+      <Sidebar />
+      <main className="memex-main">
+        <header className="memex-main__header">
+          <h1>Memex</h1>
+          <p className="memex-main__tagline">
+            Desktop wiki for plain markdown vaults.
+          </p>
+        </header>
+        <section className="memex-main__placeholder">
+          <p>Open a vault to begin editing.</p>
+        </section>
+      </main>
+    </div>
   );
 }

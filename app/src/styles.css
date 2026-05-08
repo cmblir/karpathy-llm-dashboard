@@ -1,11 +1,17 @@
 :root {
   color-scheme: light dark;
   --bg: #1a1a1a;
+  --bg-elev: #1f1f23;
+  --bg-hover: #2a2a30;
   --fg: #e8e8e8;
+  --fg-muted: rgba(232, 232, 232, 0.65);
+  --border: rgba(232, 232, 232, 0.08);
   --accent: #6c8eef;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
     Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -24,49 +30,95 @@ body {
   color: var(--fg);
 }
 
-.memex-shell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 2rem;
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
 }
 
-.memex-shell__header {
-  text-align: center;
+.memex-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100%;
+}
+
+/* Sidebar -------------------------------------------------------------- */
+.memex-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.memex-sidebar__header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.memex-sidebar__title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.memex-sidebar__empty {
+  margin: 1rem;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.memex-sidebar__tree,
+.memex-sidebar__tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.memex-sidebar__file {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: var(--fg);
+}
+
+.memex-sidebar__file:hover {
+  background: var(--bg-hover);
+}
+
+.memex-sidebar__dir {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+/* Main ----------------------------------------------------------------- */
+.memex-main {
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  overflow: auto;
+}
+
+.memex-main__header {
   margin-bottom: 1.5rem;
 }
 
-.memex-shell h1 {
-  font-size: 2.25rem;
-  margin: 0 0 0.5rem;
+.memex-main__header h1 {
+  font-size: 1.75rem;
+  margin: 0 0 0.25rem;
   letter-spacing: -0.02em;
 }
 
-.memex-shell__tagline {
+.memex-main__tagline {
   margin: 0;
-  opacity: 0.7;
+  color: var(--fg-muted);
 }
 
-.memex-shell__status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.memex-shell__status p {
-  margin: 0;
-  opacity: 0.75;
-}
-
-.memex-shell__badge {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.15rem 0.5rem;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--accent);
+.memex-main__placeholder {
+  color: var(--fg-muted);
 }
