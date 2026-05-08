@@ -5,6 +5,7 @@ import Splitter from "./components/Splitter";
 import Editor from "./components/Editor";
 import Viewer from "./components/Viewer";
 import BacklinksPanel from "./components/BacklinksPanel";
+import GraphView from "./components/GraphView";
 import ModeToggle from "./components/ModeToggle";
 import { useVaultStore } from "./stores/vaultStore";
 import { useUIStore } from "./stores/uiStore";
@@ -19,6 +20,8 @@ export default function App(): JSX.Element {
   const error = useVaultStore((s) => s.error);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const viewMode = useUIStore((s) => s.viewMode);
+  const topView = useUIStore((s) => s.topView);
+  const setTopView = useUIStore((s) => s.setTopView);
 
   const [draftContent, setDraftContent] = useState<string>("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,40 +72,57 @@ export default function App(): JSX.Element {
               </p>
             ) : null}
           </div>
-          {activeFile ? <ModeToggle /> : null}
+          <div className="memex-main__actions">
+            <button
+              type="button"
+              className={`memex-modes__btn${
+                topView === "graph" ? " memex-modes__btn--active" : ""
+              }`}
+              onClick={() =>
+                setTopView(topView === "graph" ? "editor" : "graph")
+              }
+            >
+              {topView === "graph" ? "Editor" : "Graph"}
+            </button>
+            {activeFile && topView === "editor" ? <ModeToggle /> : null}
+          </div>
         </header>
         {error ? <p className="memex-main__error">{error}</p> : null}
-        <section className={`memex-main__body memex-main__body--${viewMode}`}>
-          {activeFile ? (
-            <>
-              {viewMode !== "preview" ? (
-                <Editor
-                  docKey={activeFile.path}
-                  initialValue={activeFile.content}
-                  onChange={(c) => {
-                    setDraftContent(c);
-                    scheduleSave(activeFile.path, c);
-                  }}
-                  onSave={(c) => flushSave(activeFile.path, c)}
-                />
-              ) : null}
-              {viewMode !== "source" ? (
-                <Viewer
-                  content={draftContent}
-                  onLinkClick={(target) => {
-                    const resolved = resolveWikilink(target);
-                    if (resolved) void openFile(resolved);
-                  }}
-                />
-              ) : null}
-            </>
-          ) : (
-            <p className="memex-main__placeholder">
-              Open a vault to begin editing.
-            </p>
-          )}
-        </section>
-        <BacklinksPanel />
+        {topView === "graph" ? (
+          <GraphView />
+        ) : (
+          <section className={`memex-main__body memex-main__body--${viewMode}`}>
+            {activeFile ? (
+              <>
+                {viewMode !== "preview" ? (
+                  <Editor
+                    docKey={activeFile.path}
+                    initialValue={activeFile.content}
+                    onChange={(c) => {
+                      setDraftContent(c);
+                      scheduleSave(activeFile.path, c);
+                    }}
+                    onSave={(c) => flushSave(activeFile.path, c)}
+                  />
+                ) : null}
+                {viewMode !== "source" ? (
+                  <Viewer
+                    content={draftContent}
+                    onLinkClick={(target) => {
+                      const resolved = resolveWikilink(target);
+                      if (resolved) void openFile(resolved);
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <p className="memex-main__placeholder">
+                Open a vault to begin editing.
+              </p>
+            )}
+          </section>
+        )}
+        {topView === "editor" ? <BacklinksPanel /> : null}
       </main>
     </div>
   );

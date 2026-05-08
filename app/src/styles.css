@@ -211,6 +211,19 @@ button {
   background: var(--bg-hover);
 }
 
+.memex-main__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Graph ---------------------------------------------------------------- */
+.memex-graph {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+}
+
 /* Backlinks ------------------------------------------------------------ */
 .memex-backlinks {
   border-top: 1px solid var(--border);
