@@ -7,7 +7,10 @@ pub mod vault;
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![commands::open_vault])
+        .invoke_handler(tauri::generate_handler![
+            commands::open_vault,
+            commands::list_files,
+        ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())
         .expect("error while running Memex");

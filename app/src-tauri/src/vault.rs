@@ -11,6 +11,20 @@ pub struct VaultMeta {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum FileNode {
+    File {
+        name: String,
+        path: String,
+    },
+    Directory {
+        name: String,
+        path: String,
+        children: Vec<FileNode>,
+    },
+}
+
 pub fn open_vault(path: &str) -> Result<VaultMeta, String> {
     if path.is_empty() {
         return Err("vault path is empty".into());
@@ -40,10 +54,61 @@ pub fn open_vault(path: &str) -> Result<VaultMeta, String> {
     })
 }
 
+pub fn list_files(root: &str) -> Result<Vec<FileNode>, String> {
+    let root_path = Path::new(root)
+        .canonicalize()
+        .map_err(|e| format!("canonicalize failed for {root}: {e}"))?;
+    if !root_path.is_dir() {
+        return Err(format!("not a directory: {root}"));
+    }
+    walk_dir(&root_path).map_err(|e| format!("walk failed: {e}"))
+}
+
+fn walk_dir(dir: &Path) -> std::io::Result<Vec<FileNode>> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| !is_hidden(&e.file_name()))
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    let mut nodes = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let path_str = path.to_string_lossy().into_owned();
+        if path.is_dir() {
+            let children = walk_dir(&path)?;
+            if !children.is_empty() {
+                nodes.push(FileNode::Directory {
+                    name,
+                    path: path_str,
+                    children,
+                });
+            }
+        } else if is_markdown(&path) {
+            nodes.push(FileNode::File {
+                name,
+                path: path_str,
+            });
+        }
+    }
+    Ok(nodes)
+}
+
+fn is_hidden(name: &std::ffi::OsStr) -> bool {
+    name.to_str()
+        .is_some_and(|s| s.starts_with('.') || s == "node_modules" || s == "target")
+}
+
+fn is_markdown(path: &Path) -> bool {
+    path.extension().and_then(|s| s.to_str()) == Some("md")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::env;
+    use std::fs;
 
     #[test]
     fn open_vault_rejects_empty() {
@@ -62,5 +127,45 @@ mod tests {
         let meta = open_vault(tmp.to_str().unwrap()).unwrap();
         assert!(!meta.name.is_empty());
         assert!(!meta.path.is_empty());
+    }
+
+    fn temp_vault(name: &str) -> std::path::PathBuf {
+        let dir = env::temp_dir().join(format!("memex-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn list_files_returns_only_markdown() {
+        let dir = temp_vault("list");
+        fs::write(dir.join("note.md"), "# hi").unwrap();
+        fs::write(dir.join("ignored.txt"), "x").unwrap();
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub/inner.md"), "# inner").unwrap();
+        fs::create_dir_all(dir.join(".hidden")).unwrap();
+        fs::write(dir.join(".hidden/secret.md"), "x").unwrap();
+
+        let nodes = list_files(dir.to_str().unwrap()).unwrap();
+
+        let names: Vec<&str> = nodes
+            .iter()
+            .map(|n| match n {
+                FileNode::File { name, .. } => name.as_str(),
+                FileNode::Directory { name, .. } => name.as_str(),
+            })
+            .collect();
+        assert_eq!(names, vec!["note.md", "sub"]);
+    }
+
+    #[test]
+    fn list_files_skips_empty_dirs() {
+        let dir = temp_vault("empty");
+        fs::create_dir_all(dir.join("only-empty")).unwrap();
+        fs::write(dir.join("a.md"), "x").unwrap();
+
+        let nodes = list_files(dir.to_str().unwrap()).unwrap();
+        assert_eq!(nodes.len(), 1);
+        assert!(matches!(nodes[0], FileNode::File { .. }));
     }
 }
