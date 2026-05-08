@@ -10,6 +10,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::open_vault,
             commands::list_files,
+            commands::read_file,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

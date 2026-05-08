@@ -54,6 +54,59 @@ pub fn open_vault(path: &str) -> Result<VaultMeta, String> {
     })
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct FileContent {
+    pub path: String,
+    pub content: String,
+    pub frontmatter: serde_json::Value,
+}
+
+pub fn read_file(path: &str) -> Result<FileContent, String> {
+    let resolved = Path::new(path)
+        .canonicalize()
+        .map_err(|e| format!("canonicalize failed for {path}: {e}"))?;
+    if !resolved.is_file() {
+        return Err(format!("not a file: {path}"));
+    }
+    let raw = std::fs::read_to_string(&resolved).map_err(|e| format!("read failed: {e}"))?;
+    let (frontmatter, content) =
+        match gray_matter::Matter::<gray_matter::engine::YAML>::new().parse(&raw) {
+            Ok(parsed) => {
+                let fm = parsed
+                    .data
+                    .map(pod_to_json)
+                    .unwrap_or(serde_json::Value::Null);
+                (fm, parsed.content)
+            }
+            Err(_) => (serde_json::Value::Null, raw.clone()),
+        };
+    Ok(FileContent {
+        path: resolved.to_string_lossy().into_owned(),
+        content,
+        frontmatter,
+    })
+}
+
+fn pod_to_json(pod: gray_matter::Pod) -> serde_json::Value {
+    use gray_matter::Pod;
+    use serde_json::{Map, Number, Value};
+    match pod {
+        Pod::Null => Value::Null,
+        Pod::String(s) => Value::String(s),
+        Pod::Boolean(b) => Value::Bool(b),
+        Pod::Integer(i) => Value::Number(Number::from(i)),
+        Pod::Float(f) => Number::from_f64(f).map_or(Value::Null, Value::Number),
+        Pod::Array(arr) => Value::Array(arr.into_iter().map(pod_to_json).collect()),
+        Pod::Hash(map) => {
+            let mut out = Map::new();
+            for (k, v) in map {
+                out.insert(k, pod_to_json(v));
+            }
+            Value::Object(out)
+        }
+    }
+}
+
 pub fn list_files(root: &str) -> Result<Vec<FileNode>, String> {
     let root_path = Path::new(root)
         .canonicalize()
@@ -156,6 +209,31 @@ mod tests {
             })
             .collect();
         assert_eq!(names, vec!["note.md", "sub"]);
+    }
+
+    #[test]
+    fn read_file_parses_yaml_frontmatter() {
+        let dir = temp_vault("read");
+        let p = dir.join("a.md");
+        fs::write(
+            &p,
+            "---\ntitle: Hello\ntags:\n  - alpha\n  - beta\n---\n# Body\n",
+        )
+        .unwrap();
+        let fc = read_file(p.to_str().unwrap()).unwrap();
+        assert!(fc.content.starts_with("# Body"));
+        assert_eq!(fc.frontmatter["title"], "Hello");
+        assert_eq!(fc.frontmatter["tags"][0], "alpha");
+    }
+
+    #[test]
+    fn read_file_handles_missing_frontmatter() {
+        let dir = temp_vault("read-plain");
+        let p = dir.join("a.md");
+        fs::write(&p, "no frontmatter here").unwrap();
+        let fc = read_file(p.to_str().unwrap()).unwrap();
+        assert_eq!(fc.content, "no frontmatter here");
+        assert!(fc.frontmatter.is_null());
     }
 
     #[test]
