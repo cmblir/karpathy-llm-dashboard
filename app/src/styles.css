@@ -185,6 +185,61 @@ button {
   outline: none;
 }
 
+/* Viewer --------------------------------------------------------------- */
+.memex-viewer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 2rem;
+  line-height: 1.6;
+  max-width: 760px;
+}
+
+.memex-viewer h1,
+.memex-viewer h2,
+.memex-viewer h3 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.memex-viewer p {
+  margin: 0 0 1rem;
+}
+
+.memex-viewer code {
+  background: var(--bg-elev);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.memex-viewer pre {
+  background: var(--bg-elev);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.memex-viewer pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.memex-viewer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.memex-viewer a:hover {
+  text-decoration: underline;
+}
+
+.memex-wikilink {
+  border-bottom: 1px dashed currentColor;
+}
+
 .memex-main__error {
   color: #ff6b6b;
   background: rgba(255, 107, 107, 0.08);
