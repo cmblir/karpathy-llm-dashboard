@@ -27,6 +27,7 @@ export interface Adjacency {
   forward: Record<string, string[]>;
   backward: Record<string, string[]>;
   unresolved: Record<string, string[]>;
+  tags: Record<string, string[]>;
 }
 
 export const ipc = {

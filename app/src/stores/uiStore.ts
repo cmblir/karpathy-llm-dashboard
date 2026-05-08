@@ -17,11 +17,15 @@ export interface UIState {
   sidebarWidth: number;
   viewMode: ViewMode;
   topView: TopView;
+  graphTagFilter: string | null;
+  graphFolderFilter: string | null;
   toggleFolder: (path: string) => void;
   setFolder: (path: string, open: boolean) => void;
   setSidebarWidth: (width: number) => void;
   setViewMode: (mode: ViewMode) => void;
   setTopView: (view: TopView) => void;
+  setGraphTagFilter: (tag: string | null) => void;
+  setGraphFolderFilter: (folder: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -31,6 +35,8 @@ export const useUIStore = create<UIState>()(
       sidebarWidth: SIDEBAR_DEFAULT,
       viewMode: "split",
       topView: "editor",
+      graphTagFilter: null,
+      graphFolderFilter: null,
       toggleFolder: (path) =>
         set((state) => ({
           expandedFolders: {
@@ -48,6 +54,8 @@ export const useUIStore = create<UIState>()(
         }),
       setViewMode: (mode) => set({ viewMode: mode }),
       setTopView: (view) => set({ topView: view }),
+      setGraphTagFilter: (tag) => set({ graphTagFilter: tag }),
+      setGraphFolderFilter: (folder) => set({ graphFolderFilter: folder }),
     }),
     {
       name: "memex-ui",

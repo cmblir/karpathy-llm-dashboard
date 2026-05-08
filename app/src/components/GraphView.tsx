@@ -8,6 +8,7 @@ import type { ElementDefinition } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useVaultStore } from "../stores/vaultStore";
 import { useUIStore } from "../stores/uiStore";
+import GraphFilters from "./GraphFilters";
 
 let layoutRegistered = false;
 
@@ -21,14 +22,21 @@ function ensureLayoutRegistered() {
 export default function GraphView(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const adjacency = useVaultStore((s) => s.adjacency);
+  const currentVault = useVaultStore((s) => s.currentVault);
   const openFile = useVaultStore((s) => s.openFile);
   const setTopView = useUIStore((s) => s.setTopView);
+  const tagFilter = useUIStore((s) => s.graphTagFilter);
+  const folderFilter = useUIStore((s) => s.graphFolderFilter);
 
   useEffect(() => {
     if (!containerRef.current) return;
     ensureLayoutRegistered();
 
-    const elements = buildElements(adjacency);
+    const elements = buildElements(adjacency, {
+      tagFilter,
+      folderFilter,
+      vaultRoot: currentVault?.path ?? "",
+    });
     const cy = cytoscape({
       container: containerRef.current,
       elements,
@@ -58,27 +66,47 @@ export default function GraphView(): JSX.Element {
     return () => {
       cy.destroy();
     };
-  }, [adjacency, openFile, setTopView]);
+  }, [
+    adjacency,
+    openFile,
+    setTopView,
+    tagFilter,
+    folderFilter,
+    currentVault?.path,
+  ]);
 
   return (
-    <div
-      ref={containerRef}
-      className="memex-graph"
-      role="img"
-      aria-label="Vault link graph"
-    />
+    <div className="memex-graph-container">
+      <GraphFilters />
+      <div
+        ref={containerRef}
+        className="memex-graph"
+        role="img"
+        aria-label="Vault link graph"
+      />
+    </div>
   );
+}
+
+interface FilterOpts {
+  tagFilter: string | null;
+  folderFilter: string | null;
+  vaultRoot: string;
 }
 
 function buildElements(
   adjacency: ReturnType<typeof useVaultStore.getState>["adjacency"],
+  opts: FilterOpts,
 ): ElementDefinition[] {
   if (!adjacency) return [];
+  const allowed = computeAllowedPaths(adjacency, opts);
   const nodes = new Set<string>();
   const edges: ElementDefinition[] = [];
   for (const [source, targets] of Object.entries(adjacency.forward)) {
+    if (!allowed.has(source)) continue;
     nodes.add(source);
     for (const target of targets) {
+      if (!allowed.has(target)) continue;
       nodes.add(target);
       edges.push({
         data: { id: `${source}::${target}`, source, target },
@@ -89,6 +117,39 @@ function buildElements(
     data: { id: path, label: stem(path) },
   }));
   return [...nodeDefs, ...edges];
+}
+
+function computeAllowedPaths(
+  adjacency: NonNullable<
+    ReturnType<typeof useVaultStore.getState>["adjacency"]
+  >,
+  { tagFilter, folderFilter, vaultRoot }: FilterOpts,
+): Set<string> {
+  const all = new Set<string>();
+  for (const p of Object.keys(adjacency.forward)) all.add(p);
+  for (const targets of Object.values(adjacency.forward)) {
+    for (const p of targets) all.add(p);
+  }
+  for (const p of Object.keys(adjacency.tags)) all.add(p);
+
+  return new Set(
+    Array.from(all).filter((p) => {
+      if (tagFilter && !(adjacency.tags[p] ?? []).includes(tagFilter)) {
+        return false;
+      }
+      if (folderFilter && !inFolder(vaultRoot, p, folderFilter)) {
+        return false;
+      }
+      return true;
+    }),
+  );
+}
+
+function inFolder(root: string, path: string, folder: string): boolean {
+  const trimmed = root.replace(/[\\/]+$/, "");
+  if (!path.startsWith(trimmed)) return false;
+  const rel = path.slice(trimmed.length).replace(/^[\\/]+/, "");
+  return rel.startsWith(`${folder}/`) || rel.startsWith(`${folder}\\`);
 }
 
 function stem(path: string): string {

@@ -16,6 +16,7 @@ pub struct Adjacency {
     pub forward: BTreeMap<String, Vec<String>>,
     pub backward: BTreeMap<String, Vec<String>>,
     pub unresolved: BTreeMap<String, Vec<String>>,
+    pub tags: BTreeMap<String, Vec<String>>,
 }
 
 pub fn build_link_graph(root: &str) -> Result<Adjacency, String> {
@@ -30,6 +31,7 @@ pub fn build_link_graph(root: &str) -> Result<Adjacency, String> {
         let raw =
             std::fs::read_to_string(file).map_err(|e| format!("read {file:?}: {e}"))?;
         ingest_links(file, &raw, &stems, &mut adj);
+        ingest_tags(file, &raw, &mut adj);
     }
 
     let cache_dir = root_path.join(".memex");
@@ -106,6 +108,47 @@ fn ingest_links(
             }
         }
     }
+}
+
+fn ingest_tags(file: &Path, text: &str, adj: &mut Adjacency) {
+    let parsed = match gray_matter::Matter::<gray_matter::engine::YAML>::new().parse(text) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let Some(data) = parsed.data else {
+        return;
+    };
+    let Some(tags) = extract_tags(&data) else {
+        return;
+    };
+    if tags.is_empty() {
+        return;
+    }
+    adj.tags
+        .insert(file.to_string_lossy().into_owned(), tags);
+}
+
+fn extract_tags(pod: &gray_matter::Pod) -> Option<Vec<String>> {
+    use gray_matter::Pod;
+    let Pod::Hash(map) = pod else { return None };
+    let raw = map.get("tags")?;
+    Some(match raw {
+        Pod::Array(items) => items
+            .iter()
+            .filter_map(|p| match p {
+                Pod::String(s) => Some(s.trim().to_string()),
+                _ => None,
+            })
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Pod::String(s) => s
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => Vec::new(),
+    })
 }
 
 fn write_cache(db_path: &Path, adj: &Adjacency) -> rusqlite::Result<()> {

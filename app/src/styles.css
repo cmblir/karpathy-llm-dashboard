@@ -218,10 +218,67 @@ button {
 }
 
 /* Graph ---------------------------------------------------------------- */
+.memex-graph-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .memex-graph {
   flex: 1;
   min-height: 0;
   background: var(--bg);
+}
+
+.memex-graph-filters {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem 0 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.memex-graph-filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.memex-chip {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  background: var(--bg-elev);
+}
+
+.memex-chip:hover {
+  color: var(--fg);
+}
+
+.memex-chip--active {
+  color: var(--fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.memex-graph-filters__folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.memex-graph-filters__folder select {
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
 }
 
 /* Backlinks ------------------------------------------------------------ */
