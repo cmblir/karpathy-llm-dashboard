@@ -2,6 +2,7 @@
 // reflect the Rust command signatures in src-tauri/src/commands.rs.
 
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
 export interface VaultMeta {
   path: string;
@@ -39,4 +40,8 @@ export const ipc = {
   parseLinks: (path: string) => invoke<string[]>("parse_links", { path }),
   buildLinkGraph: (root: string) =>
     invoke<Adjacency>("build_link_graph", { root }),
+  pickDirectory: async (): Promise<string | null> => {
+    const selection = await open({ directory: true, multiple: false });
+    return typeof selection === "string" ? selection : null;
+  },
 };

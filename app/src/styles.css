@@ -67,6 +67,10 @@ button {
 }
 
 .memex-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
 }
@@ -74,6 +78,21 @@ button {
 .memex-sidebar__title {
   font-weight: 600;
   letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memex-sidebar__open {
+  font-size: 0.75rem;
+  color: var(--accent);
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+.memex-sidebar__open:hover {
+  background: rgba(108, 142, 239, 0.1);
 }
 
 .memex-sidebar__empty {

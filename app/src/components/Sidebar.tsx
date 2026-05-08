@@ -4,6 +4,7 @@
 import type { JSX } from "react";
 import { useVaultStore } from "../stores/vaultStore";
 import { useUIStore } from "../stores/uiStore";
+import { ipc } from "../lib/ipc";
 import type { FileNode } from "../lib/ipc";
 
 export interface SidebarProps {
@@ -13,6 +14,12 @@ export interface SidebarProps {
 export default function Sidebar({ onSelect }: SidebarProps): JSX.Element {
   const fileTree = useVaultStore((s) => s.fileTree);
   const currentVault = useVaultStore((s) => s.currentVault);
+  const openVault = useVaultStore((s) => s.openVault);
+
+  async function handleOpen() {
+    const path = await ipc.pickDirectory();
+    if (path) await openVault(path);
+  }
 
   return (
     <aside className="memex-sidebar" aria-label="Vault file tree">
@@ -20,6 +27,13 @@ export default function Sidebar({ onSelect }: SidebarProps): JSX.Element {
         <span className="memex-sidebar__title">
           {currentVault?.name ?? "No vault"}
         </span>
+        <button
+          type="button"
+          className="memex-sidebar__open"
+          onClick={() => void handleOpen()}
+        >
+          Open…
+        </button>
       </header>
       {fileTree.length === 0 ? (
         <p className="memex-sidebar__empty">Open a vault to see files.</p>

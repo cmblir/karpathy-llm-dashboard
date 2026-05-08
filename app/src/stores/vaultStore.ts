@@ -5,6 +5,8 @@ import { create } from "zustand";
 import { ipc } from "../lib/ipc";
 import type { Adjacency, FileContent, FileNode, VaultMeta } from "../lib/ipc";
 
+const LAST_VAULT_KEY = "memex.lastVaultPath";
+
 export interface VaultState {
   currentVault: VaultMeta | null;
   fileTree: FileNode[];
@@ -41,6 +43,11 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         activeFile: null,
         isLoading: false,
       });
+      try {
+        localStorage.setItem(LAST_VAULT_KEY, meta.path);
+      } catch {
+        /* localStorage unavailable */
+      }
     } catch (err) {
       set({ error: errorMessage(err), isLoading: false });
     }
@@ -96,6 +103,14 @@ export const useVaultStore = create<VaultState>((set, get) => ({
     });
   },
 }));
+
+export function getLastVaultPath(): string | null {
+  try {
+    return localStorage.getItem(LAST_VAULT_KEY);
+  } catch {
+    return null;
+  }
+}
 
 function findFileByStem(nodes: FileNode[], lowerStem: string): string | null {
   for (const node of nodes) {

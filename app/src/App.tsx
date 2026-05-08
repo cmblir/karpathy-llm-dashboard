@@ -7,7 +7,7 @@ import Viewer from "./components/Viewer";
 import BacklinksPanel from "./components/BacklinksPanel";
 import GraphView from "./components/GraphView";
 import ModeToggle from "./components/ModeToggle";
-import { useVaultStore } from "./stores/vaultStore";
+import { getLastVaultPath, useVaultStore } from "./stores/vaultStore";
 import { useUIStore } from "./stores/uiStore";
 
 const AUTOSAVE_MS = 2000;
@@ -15,8 +15,10 @@ const AUTOSAVE_MS = 2000;
 export default function App(): JSX.Element {
   const activeFile = useVaultStore((s) => s.activeFile);
   const openFile = useVaultStore((s) => s.openFile);
+  const openVault = useVaultStore((s) => s.openVault);
   const saveFile = useVaultStore((s) => s.saveFile);
   const resolveWikilink = useVaultStore((s) => s.resolveWikilink);
+  const currentVault = useVaultStore((s) => s.currentVault);
   const error = useVaultStore((s) => s.error);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const viewMode = useUIStore((s) => s.viewMode);
@@ -41,6 +43,14 @@ export default function App(): JSX.Element {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (currentVault) return;
+    const last = getLastVaultPath();
+    if (last) void openVault(last);
+    // We only auto-restore once at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function scheduleSave(path: string, content: string) {
