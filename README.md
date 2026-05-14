@@ -98,6 +98,179 @@ Open `http://localhost:8090`. Done.
 
 ---
 
+## Talk to your wiki
+
+Memex has **two chatbots**, and most people use both:
+
+| | What it answers | Setup |
+|---|---|---|
+| **Floating dashboard helper** (the bobbing Claude character at bottom-right) | *About the dashboard itself* — "where do I revert?", "what does Wiki Ratio mean?". Wiki-content questions are redirected to Query. | None — built into the dashboard. |
+| **External Claude (Code or Desktop) over MCP** | *About / inside the wiki* — read, search, write pages, ingest sources, commit. 14 tools exposed. | The 4-step wizard below. |
+
+### MCP setup wizard
+
+<details open>
+<summary><b>Step 1 — Install the server</b> &nbsp;<sub>(once, ~20 seconds)</sub></summary>
+
+```bash
+bash mcp-server/install.sh
+```
+
+Creates `mcp-server/.venv` with the `mcp` SDK and prints the absolute
+paths you'll paste into your client config. **Keep that output handy**
+for Step 2.
+
+The 14 exposed tools:
+
+| Read-only | Mutating |
+|---|---|
+| `list_projects` `list_pages` `read_page` `search` `folder_tree` `stats` `recent_log` `list_raw_sources` `get_instructions` | `add_raw_source` `create_page` `update_page` `create_folder` `git_commit` |
+</details>
+
+<details>
+<summary><b>Step 2 — Pick your client</b> &nbsp;<sub>(open exactly one)</sub></summary>
+
+<br />
+
+<details>
+<summary>🅰&nbsp; <b>Claude Code</b> &nbsp;— terminal CLI, in or out of this repo</summary>
+
+```bash
+claude mcp add --scope user memex \
+  -- "$PWD/mcp-server/.venv/bin/python" "$PWD/mcp-server/memex_mcp.py"
+
+claude mcp list                       # memex should appear
+```
+
+`memex` is now registered for **every** Claude Code session. To remove:
+
+```bash
+claude mcp remove memex
+```
+</details>
+
+<details>
+<summary>🅱&nbsp; <b>Claude Desktop</b> &nbsp;— macOS / Windows app</summary>
+
+> ⚠️ **Quit Claude Desktop completely first** — `Cmd+Q` on macOS.
+> Closing the window only minimizes; the Dock icon keeps the old config
+> in memory otherwise.
+
+Open the config file:
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Add the `memex` block (use the absolute paths `install.sh` printed —
+replace `<you>` with your username):
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "command": "/Users/<you>/Memex/mcp-server/.venv/bin/python",
+      "args": ["/Users/<you>/Memex/mcp-server/memex_mcp.py"]
+    }
+  }
+}
+```
+
+If the file already has an `mcpServers` block, just add the `memex`
+entry inside it. Reopen Claude Desktop. The 🔌 icon (top of the chat
+input) should list **14 Memex tools**.
+</details>
+
+<details>
+<summary>🅲&nbsp; <b>claude.ai web</b> &nbsp;— not supported, and why</summary>
+
+Web Claude only supports remote HTTP / SSE MCP servers via Connectors —
+it cannot reach a local stdio process. Use **Claude Desktop** for the
+local Memex vault, or expose the server over the network with
+`mcp-proxy` if you really need browser access.
+</details>
+</details>
+
+<details>
+<summary><b>Step 3 — Verify</b> &nbsp;<sub>(30 seconds)</sub></summary>
+
+Open a new chat in your client and ask:
+
+> List my Memex projects.
+
+Claude should call `list_projects` and reply with names from
+`projects.json`. If you see *"tool not found"* or *"memex not connected"*:
+
+- Claude Code → re-run `claude mcp list` and check the path.
+- Claude Desktop → confirm the JSON is valid (`python -m json.tool < <config>`),
+  then **fully quit and reopen** (not just close the window).
+</details>
+
+<details>
+<summary><b>Step 4 — Pin the schema</b> &nbsp;<sub>(optional, recommended for long sessions)</sub></summary>
+
+At the start of an ingestion-heavy chat, paste:
+
+> Call `memex.get_instructions` once. From now on treat factual content
+> I share as wiki ingestion — write to the wiki with citations, ask
+> before creating new pages, commit at the end. Anything I mark as
+> *"draft"* stays in chat only.
+
+This loads the project's `CLAUDE.md` (frontmatter rules, citation format,
+contradiction policy) so Claude follows them without you repeating each turn.
+</details>
+
+### Use chat content as wiki sources
+
+Once `memex` is registered, just talk to Claude in plain language — it
+picks the right tools from intent.
+
+| You say… | Claude does |
+|---|---|
+| *"Save this conversation to my Memex wiki as **Transformer scaling discussion**."* | composes a markdown summary → `add_raw_source` → updates affected entity / concept pages with `[^src-*]` citations → appends `wiki/log.md` → `git_commit` |
+| *"Add what we just discussed about **scaling laws vs data quality** as an analysis page."* | `search` for related pages → `create_page(type=analysis)` → links from the closest entities → `git_commit` |
+| *"Show me everything we have on **RLHF** and where sources conflict."* | `search` + `read_page` across hits → synthesized answer with contradictions surfaced |
+| *"Switch the active project to **ml-papers** before we continue."* | `list_projects` → server-side switch → subsequent reads/writes scope to that project |
+
+### MCP troubleshooting
+
+<details>
+<summary><b>Claude Desktop doesn't list the <code>memex</code> server</b></summary>
+
+1. Validate the config is valid JSON:
+   ```bash
+   python -m json.tool < ~/Library/Application\ Support/Claude/claude_desktop_config.json
+   ```
+2. Verify both paths exist:
+   ```bash
+   ls -la /Users/<you>/Memex/mcp-server/.venv/bin/python \
+          /Users/<you>/Memex/mcp-server/memex_mcp.py
+   ```
+3. `Cmd+Q` Claude Desktop, then reopen.
+</details>
+
+<details>
+<summary><b><code>add_raw_source</code> refused: "file exists"</b></summary>
+
+`raw/` is immutable by design — the tool refuses to overwrite. Use a
+different `slug`, or update the wiki page through `update_page` instead.
+</details>
+
+<details>
+<summary><b>Tools succeed but writes don't show in the dashboard</b></summary>
+
+Both surfaces share `projects.json` and `wiki/`. Reload the dashboard
+page — it polls but doesn't auto-push. Confirm the write committed in
+`wiki/log.md`.
+</details>
+
+The MCP server and the dashboard share the same `projects.json` and
+`wiki/` tree, so changes from either surface are immediately visible.
+Full tool reference in [`mcp-server/README.md`](mcp-server/README.md).
+
+---
+
 ## What you get
 
 <table>
@@ -219,7 +392,12 @@ Every ingest is revertable. Every claim has a citation. Every contradiction gets
 
 ## CLI usage
 
-Everything in the dashboard works from the terminal:
+Three surfaces, one wiki — pick whichever fits the moment.
+
+**1. Dashboard** — visual graph + form-driven ingest at `http://localhost:8090`.
+
+**2. Claude Code in this repo** — the dashboard shells out to `claude -p`,
+so the same prompts work from a terminal here:
 
 ```bash
 claude
@@ -229,7 +407,13 @@ claude
 "Reflect on the last 10 ingests"
 ```
 
-The dashboard shells out to `claude -p` underneath. Use whichever you prefer; they share the same state.
+**3. MCP from anywhere** — once `mcp-server/install.sh` is registered,
+any Claude Code session (in or out of this repo) and Claude Desktop can
+call the 14 Memex tools directly. See the [Talk to your wiki](#talk-to-your-wiki)
+section above for the 4-step setup wizard.
+
+All three share `projects.json` and the `wiki/` tree — changes are
+immediately visible across surfaces.
 
 ---
 
@@ -437,6 +621,16 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
 | POST | `/api/obsidian/register` | Add this folder to obsidian.json |
 
 </details>
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=cmblir/memex&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=cmblir/memex&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=cmblir/memex&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=cmblir/memex&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 

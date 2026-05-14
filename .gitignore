@@ -15,5 +15,12 @@ query-log.jsonl
 __pycache__/
 *.pyc
 
+# MCP server local venv
+mcp-server/.venv/
+mcp-server/__pycache__/
+
+# docs capture local venv (Pillow fallback for demo.gif when ffmpeg is unavailable)
+docs/.venv/
+
 # Claude Code
 .claude/

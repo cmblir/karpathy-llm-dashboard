@@ -725,12 +725,175 @@ def diagnose_claude():
     return result
 
 
+# ─── LLM Wiki vault scaffolding ───
+# Applied idempotently when registering an Obsidian vault. Never overrides existing
+# user files or settings — only fills in missing pieces so the vault is recognised
+# by Obsidian as a Memex/LLM-Wiki workspace out of the box.
+
+LLM_WIKI_APP_JSON_DEFAULTS = {
+    "attachmentFolderPath": "raw/assets",
+    "newFileLocation": "folder",
+    "newFileFolderPath": "wiki",
+    "useMarkdownLinks": False,
+    "strictLineBreaks": True,
+    "readableLineLength": True,
+}
+
+
+def _llm_wiki_index_template(today: str) -> str:
+    return (
+        "---\n"
+        "title: Index\n"
+        "type: overview\n"
+        f"created: {today}\n"
+        f"last_updated: {today}\n"
+        "tags:\n"
+        "  - meta\n"
+        "---\n"
+        "\n"
+        "# Wiki Index\n"
+        "\n"
+        "All wiki pages, organized by type. Updated on every ingest.\n"
+        "\n"
+        "## Overview\n"
+        "- [[overview]] — wiki scope and current state\n"
+        "\n"
+        "## Sources\n_(none yet)_\n\n"
+        "## Entities\n_(none yet)_\n\n"
+        "## Concepts\n_(none yet)_\n\n"
+        "## Techniques\n_(none yet)_\n\n"
+        "## Analyses\n_(none yet)_\n"
+    )
+
+
+def _llm_wiki_log_template(today: str) -> str:
+    return (
+        "---\n"
+        "title: Log\n"
+        "type: overview\n"
+        f"created: {today}\n"
+        f"last_updated: {today}\n"
+        "tags:\n"
+        "  - meta\n"
+        "---\n"
+        "\n"
+        "# Wiki Log\n"
+        "\n"
+        "Chronological record of all wiki activity.\n"
+        "\n"
+        f"## [{today}] init | Vault initialized\n"
+        "Schema scaffolding created by the Memex dashboard.\n"
+    )
+
+
+def _llm_wiki_overview_template(today: str) -> str:
+    return (
+        "---\n"
+        "title: Overview\n"
+        "type: overview\n"
+        f"created: {today}\n"
+        f"last_updated: {today}\n"
+        "sources: []\n"
+        "tags:\n"
+        "  - meta\n"
+        "---\n"
+        "\n"
+        "# Wiki Overview\n"
+        "\n"
+        "## Current state\n"
+        "\n"
+        "- **Sources**: 0\n"
+        "- **Entity pages**: 0\n"
+        "- **Concept pages**: 0\n"
+        "- **Technique pages**: 0\n"
+        "- **Total wiki pages**: 0\n"
+        "\n"
+        "_The vault is empty. Add a source to get started._\n"
+        "\n"
+        "## Getting started\n"
+        "\n"
+        "1. Drop a document into `raw/` (or use the dashboard Ingest view).\n"
+        "2. Claude creates a source summary, extracts entities and concepts, wires up cross-references.\n"
+        "3. Watch pages appear in Obsidian and the dashboard in real time.\n"
+    )
+
+
+def _ensure_vault_scaffolding(vault_root: Path) -> dict:
+    """Provision LLM Wiki schema + Obsidian app.json defaults inside the vault.
+
+    Idempotent. Existing files and existing keys in app.json are preserved;
+    only missing pieces are added. Returns a structured report of changes.
+    """
+    vault_root = Path(vault_root)
+    created: list[str] = []
+    updated: list[str] = []
+
+    # 1. Directory skeleton (raw/ is immutable for content, but the dirs themselves are scaffolding)
+    for sub in ("raw", "raw/assets", "wiki", "ingest-reports"):
+        d = vault_root / sub
+        if not d.exists():
+            d.mkdir(parents=True, exist_ok=True)
+            created.append(sub + "/")
+
+    # 2. Wiki scaffolding files (only when missing)
+    today = datetime.now().strftime("%Y-%m-%d")
+    scaffolds = (
+        ("wiki/index.md", _llm_wiki_index_template(today)),
+        ("wiki/log.md", _llm_wiki_log_template(today)),
+        ("wiki/overview.md", _llm_wiki_overview_template(today)),
+    )
+    for fname, content in scaffolds:
+        p = vault_root / fname
+        if not p.exists():
+            p.write_text(content, encoding="utf-8")
+            created.append(fname)
+
+    # 3. CLAUDE.md (only when missing; copy from templates/CLAUDE.md if shipped with the vault)
+    claude_md = vault_root / "CLAUDE.md"
+    if not claude_md.exists():
+        tmpl = vault_root / "templates" / "CLAUDE.md"
+        if tmpl.is_file():
+            try:
+                claude_md.write_text(tmpl.read_text("utf-8"), encoding="utf-8")
+                created.append("CLAUDE.md")
+            except Exception:
+                pass
+
+    # 4. .obsidian/app.json defaults — merge, never override existing keys
+    obs_dir = vault_root / ".obsidian"
+    obs_dir.mkdir(parents=True, exist_ok=True)
+    app_json = obs_dir / "app.json"
+    existing: dict = {}
+    if app_json.exists():
+        try:
+            parsed = json.loads(app_json.read_text("utf-8"))
+            if isinstance(parsed, dict):
+                existing = parsed
+        except Exception:
+            existing = {}
+    merged = dict(existing)
+    keys_added: list[str] = []
+    for k, v in LLM_WIKI_APP_JSON_DEFAULTS.items():
+        if k not in merged:
+            merged[k] = v
+            keys_added.append(k)
+    if not app_json.exists():
+        app_json.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+        created.append(".obsidian/app.json")
+    elif keys_added:
+        app_json.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+        updated.append(".obsidian/app.json (added: " + ", ".join(keys_added) + ")")
+
+    return {"created": created, "updated": updated}
+
+
 def register_obsidian_vault():
     """현재 프로젝트 폴더를 Obsidian config에 vault로 등록.
 
     obsidian.json의 vaults 딕셔너리에 이 프로젝트의 엔트리를 추가한다.
     이미 등록되어 있으면 open 플래그만 true로 설정.
     Obsidian이 실행 중일 수 있어 config를 덮어쓸 때는 조심스럽게.
+    또한 vault에 LLM Wiki 스키마와 Obsidian 기본 설정을 idempotent하게 보강한다.
     """
     facts = _read_obsidian_facts()
     project_path = facts["project_path"]
@@ -797,11 +960,18 @@ def register_obsidian_vault():
     except Exception as e:
         return {"ok": False, "error": f"config write error: {e}"}
 
+    # LLM Wiki 자동 세팅 — vault scaffolding (idempotent, non-destructive)
+    try:
+        scaffolding = _ensure_vault_scaffolding(Path(project_path))
+    except Exception as e:
+        scaffolding = {"created": [], "updated": [], "error": f"{type(e).__name__}: {e}"}
+
     return {
         "ok": True,
         "action": action,
         "config_path": str(config_path),
         "project_path": project_path,
+        "scaffolding": scaffolding,
         "restart_hint": "Obsidian을 재시작(또는 실행)하면 vault가 목록에 나타납니다.",
     }
 
@@ -1484,7 +1654,7 @@ SUGGESTION: "검색어 또는 논문 제목" | WHY: 이유 | EXPECTED_PAGES: 이
 # ─── 대시보드 도우미 챗봇 ───
 # 대시보드 자체에 대한 질문에 답변. 위키 내용이 아니라 기능/사용법.
 
-ASSISTANT_CONTEXT_EN = """You are "Claude", a friendly dashboard assistant for the Karpathy LLM Dashboard.
+ASSISTANT_CONTEXT_EN = """You are "Claude", a friendly dashboard assistant for Memex (a personal knowledge base built on the Karpathy LLM Wiki pattern).
 Your job is to answer questions about HOW THE DASHBOARD WORKS — its features, how to use them, where to click, what keyboard shortcuts exist, etc.
 
 Do NOT answer wiki content questions (those go through /api/query). Redirect user to the Query feature instead.
@@ -1509,7 +1679,7 @@ Key facts about the dashboard:
 Keep answers SHORT (2-4 sentences) and actionable. If the user asks about wiki content, say "That's a wiki question — use the Query feature (toolbar → Work → Query)." in a friendly way.
 """
 
-ASSISTANT_CONTEXT_KO = """당신은 "Claude" 캐릭터로, Karpathy LLM 대시보드의 친근한 도우미입니다.
+ASSISTANT_CONTEXT_KO = """당신은 "Claude" 캐릭터로, Memex(Karpathy LLM Wiki 패턴 기반 개인 지식 베이스)의 친근한 도우미입니다.
 당신의 역할은 **대시보드 자체의 기능과 사용법**에 대한 질문에 답변하는 것입니다 — 어디를 클릭하는지, 단축키는 뭔지 등.
 
 위키 내용에 관한 질문은 답하지 마세요 (그건 /api/query 담당). 대신 Query 기능을 안내하세요.
