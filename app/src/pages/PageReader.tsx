@@ -11,6 +11,7 @@ import { useUIStore } from "../stores/uiStore";
 import { useVaultStore } from "../stores/vaultStore";
 import Editor from "../components/Editor";
 import Viewer from "../components/Viewer";
+import BacklinksPanel from "../components/BacklinksPanel";
 
 const AUTOSAVE_MS = 2000;
 
@@ -229,6 +230,7 @@ function VaultPage({ path }: { path: string; t: Strings }): JSX.Element {
           </div>
         ) : null}
       </section>
+      <BacklinksPanel filePath={path} />
     </div>
   );
 }

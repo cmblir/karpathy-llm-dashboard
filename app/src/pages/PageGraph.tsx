@@ -1,69 +1,87 @@
-// Graph page — radial layout grouped by type, sample data driven.
+// Graph page — renders the real link graph from vault adjacency using
+// Cytoscape.js with the fcose layout. Tag chips (from frontmatter) act as
+// filters; clicking a node opens the corresponding file.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import cytoscape from "cytoscape";
+import type { ElementDefinition, StylesheetCSS } from "cytoscape";
+import fcose from "cytoscape-fcose";
 import type { Strings } from "../lib/i18n";
-import { SAMPLE } from "../lib/sample";
-import type { PageType } from "../lib/sample";
 import { useUIStore } from "../stores/uiStore";
-import type { RouteId } from "../stores/uiStore";
+import { useVaultStore } from "../stores/vaultStore";
 
-type FilterMap = Record<PageType, boolean>;
+let layoutRegistered = false;
+
+function ensureLayoutRegistered(): void {
+  if (!layoutRegistered) {
+    cytoscape.use(fcose);
+    layoutRegistered = true;
+  }
+}
 
 export default function PageGraph({ t }: { t: Strings }): JSX.Element {
+  const adjacency = useVaultStore((s) => s.adjacency);
+  const currentVault = useVaultStore((s) => s.currentVault);
   const setRoute = useUIStore((s) => s.setRoute);
-  const g = SAMPLE.graph;
-  const W = 760;
-  const H = 480;
-  const groupOrder: PageType[] = useMemo(
-    () => ["overview", "source", "entity", "concept", "technique", "analysis"],
-    [],
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+
+  const tags = useMemo(() => collectTags(adjacency?.tags ?? {}), [adjacency]);
+  const folders = useMemo(
+    () => collectFolders(currentVault?.path ?? "", adjacency),
+    [adjacency, currentVault?.path],
   );
-  const groups = useMemo(() => {
-    const m: Record<string, typeof g.nodes> = {};
-    for (const n of g.nodes) {
-      (m[n.group] ??= []).push(n);
-    }
-    return m;
-  }, [g]);
-  const positions = useMemo(() => {
-    const angles: Record<string, number> = {};
-    groupOrder.forEach((gn, i) => {
-      angles[gn] = (i / 6) * Math.PI * 2;
+
+  useEffect(() => {
+    if (!containerRef.current || !adjacency) return;
+    ensureLayoutRegistered();
+    const allowed = computeAllowed(adjacency, {
+      tagFilter,
+      folderFilter,
+      vaultRoot: currentVault?.path ?? "",
     });
-    const pos: Record<string, { x: number; y: number }> = {};
-    for (const [gname, nodes] of Object.entries(groups)) {
-      const base = angles[gname] ?? 0;
-      nodes.forEach((n, i) => {
-        const localR = nodes.length === 1 ? 0 : 80;
-        const localA = nodes.length === 1 ? 0 : (i / nodes.length) * Math.PI * 2;
-        const cx = W / 2 + Math.cos(base) * 170;
-        const cy = H / 2 + Math.sin(base) * 140;
-        pos[n.id] = {
-          x: cx + Math.cos(localA) * localR,
-          y: cy + Math.sin(localA) * localR,
-        };
-      });
+    const elements = buildElements(adjacency, allowed);
+    if (elements.length === 0) {
+      containerRef.current.innerHTML = "";
+      return;
     }
-    const ovId = groups.overview?.[0]?.id;
-    if (ovId) pos[ovId] = { x: W / 2, y: H / 2 };
-    return pos;
-  }, [groups, groupOrder]);
+    const cy = cytoscape({
+      container: containerRef.current,
+      elements,
+      style: STYLE,
+      layout: {
+        name: "fcose",
+        animate: false,
+        fit: true,
+        padding: 30,
+        nodeSeparation: 80,
+      } as unknown as cytoscape.LayoutOptions,
+      wheelSensitivity: 0.2,
+      minZoom: 0.1,
+      maxZoom: 4,
+    });
+    cy.on("tap", "node", (event) => {
+      const path = event.target.id();
+      setRoute(`page:${path}`);
+    });
+    cy.ready(() => {
+      cy.fit(undefined, 30);
+    });
+    return () => {
+      cy.destroy();
+    };
+  }, [adjacency, tagFilter, folderFilter, currentVault?.path, setRoute]);
 
-  const [hover, setHover] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterMap>({
-    overview: true,
-    source: true,
-    entity: true,
-    concept: true,
-    technique: true,
-    analysis: true,
-  });
-
-  const visible = (id: string): boolean => {
-    const n = g.nodes.find((x) => x.id === id);
-    return n ? filter[n.group] : false;
-  };
+  const nodeCount = adjacency
+    ? new Set(
+        Object.entries(adjacency.forward).flatMap(([s, ts]) => [s, ...ts]),
+      ).size
+    : 0;
+  const edgeCount = adjacency
+    ? Object.values(adjacency.forward).reduce((s, a) => s + a.length, 0)
+    : 0;
 
   return (
     <div className="workspace workspace-wide">
@@ -72,150 +90,231 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
         <h1 className="page-title">{t.gr_title}</h1>
         <p className="page-lede">{t.gr_lede}</p>
       </header>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 24, marginTop: 16 }}>
-        <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--bg-soft)" }}>
+      <div
+        className="card"
+        style={{
+          padding: 0,
+          overflow: "hidden",
+          background: "var(--bg-soft)",
+        }}
+      >
+        <div
+          className="row"
+          style={{
+            padding: "10px 14px",
+            borderBottom: "1px solid var(--line)",
+            background: "var(--bg)",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <span className="chip">
+            {nodeCount} {t.gr_node_count}
+          </span>
+          <span className="chip">
+            {edgeCount} {t.gr_edge_count}
+          </span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`chip${tagFilter === null ? " chip-active" : ""}`}
+              style={chipBtn(tagFilter === null)}
+              onClick={() => setTagFilter(null)}
+            >
+              all tags
+            </button>
+            {tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                style={chipBtn(tagFilter === tag)}
+                onClick={() =>
+                  setTagFilter(tagFilter === tag ? null : tag)
+                }
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+          {folders.length > 0 ? (
+            <select
+              className="pill"
+              style={{ marginLeft: "auto" }}
+              value={folderFilter ?? ""}
+              onChange={(e) => setFolderFilter(e.target.value || null)}
+            >
+              <option value="">all folders</option>
+              {folders.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+        {nodeCount === 0 ? (
+          <p className="muted" style={{ padding: 40, textAlign: "center" }}>
+            No wikilinks found in the vault yet. Add some{" "}
+            <code style={{ fontFamily: "var(--font-mono)" }}>
+              [[wikilinks]]
+            </code>{" "}
+            to see the graph grow.
+          </p>
+        ) : (
           <div
-            className="row"
+            ref={containerRef}
             style={{
-              padding: "10px 14px",
-              borderBottom: "1px solid var(--line)",
+              height: 560,
+              width: "100%",
               background: "var(--bg)",
             }}
-          >
-            <span className="chip">
-              {g.nodes.length} {t.gr_node_count}
-            </span>
-            <span className="chip">
-              {g.edges.length} {t.gr_edge_count}
-            </span>
-          </div>
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            style={{ width: "100%", height: 480, display: "block" }}
-          >
-            <defs>
-              <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                <circle cx="1" cy="1" r="0.6" fill="var(--ink-5)" opacity="0.4" />
-              </pattern>
-            </defs>
-            <rect width={W} height={H} fill="url(#grid)" />
-            {g.edges.map(([a, b], i) => {
-              if (!visible(a) || !visible(b)) return null;
-              const pa = positions[a];
-              const pb = positions[b];
-              if (!pa || !pb) return null;
-              const isHover = hover !== null && (hover === a || hover === b);
-              return (
-                <line
-                  key={i}
-                  x1={pa.x}
-                  y1={pa.y}
-                  x2={pb.x}
-                  y2={pb.y}
-                  stroke={isHover ? "var(--ink)" : "var(--ink-5)"}
-                  strokeWidth={isHover ? 1.4 : 0.8}
-                  opacity={hover && !isHover ? 0.25 : 1}
-                />
-              );
-            })}
-            {g.nodes.map((n) => {
-              if (!filter[n.group]) return null;
-              const p = positions[n.id];
-              if (!p) return null;
-              const r = 4 + n.w * 0.6;
-              const isHover = hover === n.id;
-              return (
-                <g
-                  key={n.id}
-                  transform={`translate(${p.x},${p.y})`}
-                  style={{ cursor: "pointer" }}
-                  onMouseEnter={() => setHover(n.id)}
-                  onMouseLeave={() => setHover(null)}
-                  onClick={() => setRoute(`page:sample/${n.id}` as RouteId)}
-                >
-                  <circle r={r + 4} fill="var(--bg)" />
-                  <circle
-                    r={r}
-                    fill={`var(--c-${n.group})`}
-                    stroke={isHover ? "var(--ink)" : "var(--bg)"}
-                    strokeWidth={isHover ? 2 : 1.5}
-                  />
-                  <text
-                    x={r + 6}
-                    y={3}
-                    fontSize="11"
-                    fill="var(--ink-2)"
-                    style={{ pointerEvents: "none" }}
-                  >
-                    {n.label}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-
-        <aside className="col">
-          <div className="card">
-            <div className="section-title" style={{ fontSize: 13.5, marginBottom: 10 }}>
-              {t.gr_legend}
-            </div>
-            <div className="col" style={{ gap: 8 }}>
-              {groupOrder.map((k) => (
-                <button
-                  key={k}
-                  className="row"
-                  style={{
-                    cursor: "pointer",
-                    gap: 8,
-                    background: "transparent",
-                    border: 0,
-                    padding: 0,
-                    width: "100%",
-                  }}
-                  onClick={() => setFilter({ ...filter, [k]: !filter[k] })}
-                >
-                  <span className={`switch ${filter[k] ? "on" : ""}`}></span>
-                  <span className={`chip-dot t-${k}`} style={{ display: "inline-block" }}></span>
-                  <span style={{ textTransform: "capitalize" }}>{k}</span>
-                  <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
-                    {(groups[k] ?? []).length}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="section-title" style={{ fontSize: 13.5, marginBottom: 8 }}>
-              Selection
-            </div>
-            {hover ? (
-              (() => {
-                const n = g.nodes.find((x) => x.id === hover);
-                if (!n) return null;
-                const links = g.edges.filter(([a, b]) => a === hover || b === hover).length;
-                return (
-                  <div className="col" style={{ gap: 6 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15 }}>{n.label}</div>
-                    <span className="typebadge">
-                      <span className={`tb-dot t-${n.group}`}></span>
-                      {n.group}
-                    </span>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      {links} connections
-                    </div>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="muted" style={{ fontSize: 13 }}>
-                Hover a node to see details. Click to open.
-              </div>
-            )}
-          </div>
-        </aside>
+          />
+        )}
       </div>
     </div>
   );
 }
+
+function chipBtn(active: boolean): React.CSSProperties {
+  return {
+    fontSize: 11.5,
+    padding: "2px 8px",
+    borderRadius: 3,
+    background: active ? "var(--ink)" : "var(--bg-soft)",
+    color: active ? "var(--bg)" : "var(--ink-3)",
+    border: "1px solid var(--line)",
+    cursor: "pointer",
+  };
+}
+
+interface AllowFilterOpts {
+  tagFilter: string | null;
+  folderFilter: string | null;
+  vaultRoot: string;
+}
+
+function computeAllowed(
+  adjacency: NonNullable<
+    ReturnType<typeof useVaultStore.getState>["adjacency"]
+  >,
+  { tagFilter, folderFilter, vaultRoot }: AllowFilterOpts,
+): Set<string> {
+  const all = new Set<string>();
+  for (const p of Object.keys(adjacency.forward)) all.add(p);
+  for (const targets of Object.values(adjacency.forward)) {
+    for (const p of targets) all.add(p);
+  }
+  for (const p of Object.keys(adjacency.tags)) all.add(p);
+  return new Set(
+    Array.from(all).filter((p) => {
+      if (tagFilter && !(adjacency.tags[p] ?? []).includes(tagFilter)) {
+        return false;
+      }
+      if (folderFilter && !inFolder(vaultRoot, p, folderFilter)) {
+        return false;
+      }
+      return true;
+    }),
+  );
+}
+
+function buildElements(
+  adjacency: NonNullable<
+    ReturnType<typeof useVaultStore.getState>["adjacency"]
+  >,
+  allowed: Set<string>,
+): ElementDefinition[] {
+  const nodes = new Set<string>();
+  const edges: ElementDefinition[] = [];
+  for (const [source, targets] of Object.entries(adjacency.forward)) {
+    if (!allowed.has(source)) continue;
+    nodes.add(source);
+    for (const target of targets) {
+      if (!allowed.has(target)) continue;
+      nodes.add(target);
+      edges.push({
+        data: { id: `${source}::${target}`, source, target },
+      });
+    }
+  }
+  return [
+    ...Array.from(nodes).map((p) => ({
+      data: { id: p, label: stem(p) },
+    })),
+    ...edges,
+  ];
+}
+
+function collectTags(map: Record<string, string[]>): string[] {
+  const set = new Set<string>();
+  for (const arr of Object.values(map)) {
+    for (const tag of arr) set.add(tag);
+  }
+  return Array.from(set).sort();
+}
+
+function collectFolders(
+  root: string,
+  adjacency:
+    | { forward: Record<string, string[]>; tags: Record<string, string[]> }
+    | null,
+): string[] {
+  if (!adjacency || !root) return [];
+  const trimmed = root.replace(/[\\/]+$/, "");
+  const set = new Set<string>();
+  const paths = new Set<string>();
+  for (const p of Object.keys(adjacency.forward)) paths.add(p);
+  for (const arr of Object.values(adjacency.forward)) {
+    for (const p of arr) paths.add(p);
+  }
+  for (const p of Object.keys(adjacency.tags)) paths.add(p);
+  for (const p of paths) {
+    if (!p.startsWith(trimmed)) continue;
+    const rel = p.slice(trimmed.length).replace(/^[\\/]+/, "");
+    const idx = rel.indexOf("/");
+    if (idx > 0) set.add(rel.slice(0, idx));
+  }
+  return Array.from(set).sort();
+}
+
+function inFolder(root: string, path: string, folder: string): boolean {
+  const trimmed = root.replace(/[\\/]+$/, "");
+  if (!path.startsWith(trimmed)) return false;
+  const rel = path.slice(trimmed.length).replace(/^[\\/]+/, "");
+  return rel.startsWith(`${folder}/`) || rel.startsWith(`${folder}\\`);
+}
+
+function stem(path: string): string {
+  const name = path.split(/[\\/]/).pop() ?? path;
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+const STYLE: StylesheetCSS[] = [
+  {
+    selector: "node",
+    css: {
+      "background-color": "#6c8eef",
+      label: "data(label)",
+      color: "var(--ink-2)",
+      "font-size": 10,
+      "text-valign": "bottom",
+      "text-halign": "center",
+      "text-margin-y": 4,
+      width: 14,
+      height: 14,
+    },
+  },
+  {
+    selector: "edge",
+    css: {
+      "line-color": "rgba(127, 127, 127, 0.28)",
+      "curve-style": "bezier",
+      width: 1,
+    },
+  },
+  {
+    selector: "node:selected",
+    css: { "background-color": "#a4b7f2" },
+  },
+];
