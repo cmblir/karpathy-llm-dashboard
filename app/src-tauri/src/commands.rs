@@ -38,6 +38,25 @@ pub fn write_file(path: String, content: String) -> Result<(), String> {
     vault::write_file(&path, &content)
 }
 
+/// Read any text file on disk (not restricted to inside the vault). Used by
+/// the Ingest drag-drop handler to slurp the dropped file's content into the
+/// paste-body textarea. Refuses files larger than 25 MB.
+#[tauri::command]
+pub fn read_external_text(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err(format!("not a file: {path}"));
+    }
+    let meta = std::fs::metadata(p).map_err(|e| format!("stat failed: {e}"))?;
+    if meta.len() > 25 * 1024 * 1024 {
+        return Err(format!(
+            "file too large: {} bytes (limit 25 MB)",
+            meta.len()
+        ));
+    }
+    std::fs::read_to_string(p).map_err(|e| format!("read failed: {e}"))
+}
+
 #[tauri::command]
 pub fn create_file(parent: String, name: String) -> Result<String, String> {
     vault::create_file(&parent, &name)

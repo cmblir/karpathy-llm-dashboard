@@ -1,8 +1,9 @@
 // Ingest page — drop a file or paste raw text, then call `claude` to write
 // it into `raw/<slug>.md` and ingest into the wiki per CLAUDE.md instructions.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Icon } from "../lib/icons";
 import type { Strings } from "../lib/i18n";
 import { ipc } from "../lib/ipc";
@@ -44,6 +45,48 @@ export default function PageIngest({ t }: { t: Strings }): JSX.Element {
   const [body, setBody] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [log, setLog] = useState<string>("");
+  const [dropError, setDropError] = useState<string | null>(null);
+
+  // Tauri intercepts drag-drop at the OS level (so the browser drop event
+  // never fires inside the WebView). Subscribe to its native event instead
+  // and read the file via Rust IPC — we get a real path + UTF-8 contents.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      const webview = getCurrentWebview();
+      const u = await webview.onDragDropEvent(async (event) => {
+        if (event.payload.type === "over") {
+          setOver(true);
+          return;
+        }
+        if (event.payload.type === "leave") {
+          setOver(false);
+          return;
+        }
+        if (event.payload.type === "drop") {
+          setOver(false);
+          const paths = event.payload.paths ?? [];
+          if (paths.length === 0) return;
+          const first = paths[0];
+          setDropError(null);
+          if (!title) {
+            const base = first.split(/[\\/]/).pop() ?? "";
+            setTitle(base.replace(/\.[^.]+$/, ""));
+          }
+          try {
+            const text = await ipc.readExternalText(first);
+            setBody(text);
+          } catch (err) {
+            setDropError(`Could not read ${first}: ${String(err)}`);
+          }
+        }
+      });
+      unlisten = u;
+    })();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [title]);
 
   const canRun = !!currentVault && (title.trim() || body.trim());
 
@@ -84,18 +127,20 @@ export default function PageIngest({ t }: { t: Strings }): JSX.Element {
     }
   }
 
-  function onDrop(e: React.DragEvent<HTMLDivElement>): void {
-    e.preventDefault();
-    setOver(false);
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    if (!title) setTitle(file.name.replace(/\.[^.]+$/, ""));
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === "string" ? reader.result : "";
+  async function browseAndLoad(): Promise<void> {
+    setDropError(null);
+    const path = await ipc.pickTextFile();
+    if (!path) return;
+    if (!title) {
+      const base = path.split(/[\\/]/).pop() ?? "";
+      setTitle(base.replace(/\.[^.]+$/, ""));
+    }
+    try {
+      const text = await ipc.readExternalText(path);
       setBody(text);
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      setDropError(`Could not read ${path}: ${String(err)}`);
+    }
   }
 
   return (
@@ -121,20 +166,30 @@ export default function PageIngest({ t }: { t: Strings }): JSX.Element {
         }}
       >
         <div className="col">
-          <div
-            className={"dropzone" + (over ? " over" : "")}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setOver(true);
-            }}
-            onDragLeave={() => setOver(false)}
-            onDrop={onDrop}
-          >
+          <div className={"dropzone" + (over ? " over" : "")}>
             <Icon name="upload" size={26} />
             <div className="dropzone-title">{t.ing_drop}</div>
             <div className="dropzone-sub">
-              Drop a text/markdown file or paste below
+              Drop a text/markdown file anywhere on this window — or
             </div>
+            <button
+              className="btn"
+              style={{ marginTop: 10 }}
+              onClick={() => void browseAndLoad()}
+            >
+              {t.ing_browse}
+            </button>
+            {dropError ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "#dc2626",
+                  fontSize: 12,
+                }}
+              >
+                {dropError}
+              </div>
+            ) : null}
           </div>
 
           <div className="field">

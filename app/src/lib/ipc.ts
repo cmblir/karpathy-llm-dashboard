@@ -109,6 +109,8 @@ export const ipc = {
   readFile: (path: string) => invoke<FileContent>("read_file", { path }),
   writeFile: (path: string, content: string) =>
     invoke<null>("write_file", { path, content }),
+  readExternalText: (path: string) =>
+    invoke<string>("read_external_text", { path }),
   parseLinks: (path: string) => invoke<string[]>("parse_links", { path }),
   buildLinkGraph: (root: string) =>
     invoke<Adjacency>("build_link_graph", { root }),
@@ -121,6 +123,19 @@ export const ipc = {
     invoke<string>("rename_path", { from, toName }),
   pickDirectory: async (): Promise<string | null> => {
     const selection = await open({ directory: true, multiple: false });
+    return typeof selection === "string" ? selection : null;
+  },
+  pickTextFile: async (): Promise<string | null> => {
+    const selection = await open({
+      directory: false,
+      multiple: false,
+      filters: [
+        {
+          name: "Text-like",
+          extensions: ["md", "txt", "markdown", "html", "json", "yaml", "yml"],
+        },
+      ],
+    });
     return typeof selection === "string" ? selection : null;
   },
   gitLog: (vaultPath: string, limit?: number) =>

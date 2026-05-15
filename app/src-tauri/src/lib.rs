@@ -23,6 +23,7 @@ pub fn run() {
             commands::list_files,
             commands::read_file,
             commands::write_file,
+            commands::read_external_text,
             commands::create_file,
             commands::create_folder,
             commands::delete_path,
