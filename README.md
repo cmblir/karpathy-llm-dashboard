@@ -10,15 +10,15 @@
 
 <p>
 Drop a source. Claude does the bookkeeping.<br/>
-Your knowledge compounds.
+Your knowledge compounds — in plain markdown you own.
 </p>
 
 <p>
-<a href="#quick-start"><img alt="Quick start" src="https://img.shields.io/badge/quick%20start-60s-111?style=flat-square" /></a>
-&nbsp;
-<img alt="Dependencies" src="https://img.shields.io/badge/pip%20deps-0-111?style=flat-square" />
+<a href="#install"><img alt="Install" src="https://img.shields.io/badge/install-DMG-111?style=flat-square" /></a>
 &nbsp;
 <img alt="License" src="https://img.shields.io/badge/license-MIT-111?style=flat-square" />
+&nbsp;
+<img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-111?style=flat-square" />
 &nbsp;
 <img alt="Made with Claude Code" src="https://img.shields.io/badge/made%20with-Claude%20Code-111?style=flat-square" />
 &nbsp;
@@ -33,7 +33,7 @@ Your knowledge compounds.
 
 <br />
 
-<img src="docs/demo.gif" width="100%" alt="Memex dashboard demo" />
+<img src="docs/demo.gif" width="100%" alt="Memex demo" />
 
 </div>
 
@@ -43,128 +43,194 @@ Your knowledge compounds.
 
 Most LLM-plus-documents setups **re-derive knowledge on every query**. RAG finds chunks, the model stitches an answer, nothing is kept. Ten queries against the same docs → ten rediscoveries.
 
-**Memex inverts this.** You add a source once. Claude reads it, integrates it into a persistent wiki, flags contradictions against older pages, wires up citations, and commits the result. By query #10, the wiki is doing the synthesis for free — the bookkeeping has already happened.
+**Memex inverts this.** You add a source once. Claude reads it, integrates it into a persistent wiki, flags contradictions against older pages, wires up citations, and commits the result. By query #10 the wiki itself answers — the bookkeeping already happened.
 
 Based on [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). Named for [Vannevar Bush's 1945 Memex](https://en.wikipedia.org/wiki/Memex).
+
+---
+
+## Three surfaces, one wiki
+
+Memex ships as a native desktop app today. Two other surfaces exist for users who want a browser UI or programmatic access from another Claude client.
+
+| Surface | What it is | When to use |
+|---|---|---|
+| **Memex desktop app** (`app/`) | Tauri 2 + React. Ships as a `.dmg` / `.exe`. Bundles its own vault, talks to any of 5 LLM providers (CLI + 4 HTTP APIs + Ollama). | **Default. Use this.** |
+| **Dashboard server** (`dashboard/`) | Python stdlib HTTP server + single-file HTML UI at `localhost:8090`. Shells out to `claude` CLI. | Multi-project switching, web access, scripted CI ingest. |
+| **MCP server** (`mcp-server/`) | 14 tools exposed via the Model Context Protocol. | Drive Memex from Claude Desktop / Claude Code / any MCP client. |
+
+All three share the same vault layout (`raw/ wiki/ daily/ ingest-reports/`) and never lock your data. Plain markdown on disk, always.
+
+---
+
+## Install
+
+### Desktop app (recommended)
+
+Grab the bundle for your platform:
+
+- **macOS Apple Silicon**: `Memex_0.1.0_aarch64.dmg` ([build from source](#build-from-source) until CI releases land)
+- **Windows x64**: `Memex_0.1.0_x64-setup.exe`
+
+Mount/run, drag to Applications. On first launch Memex creates
+`~/Documents/Memex/` and seeds it with:
+
+```
+~/Documents/Memex/
+├── CLAUDE.md            ← maintenance rules for Claude
+├── welcome.md           ← onboarding note
+├── raw/                 ← drop sources here (immutable)
+├── wiki/                ← Claude-maintained pages
+│   ├── index.md
+│   └── log.md
+├── daily/               ← daily notes (YYYY-MM-DD.md)
+└── ingest-reports/      ← WHY reports per ingest
+```
+
+To use a different folder (e.g. an existing Obsidian vault), open
+Settings → Account → Change…
+
+### Dashboard / MCP (alternative surfaces)
+
+Requires Python 3.10+ (stdlib only) and the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code).
+
+```bash
+git clone https://github.com/cmblir/memex.git
+cd memex
+python dashboard/server.py    # browser UI at localhost:8090
+# or
+bash mcp-server/install.sh    # MCP server for Claude Desktop/Code
+```
+
+---
+
+## The desktop app
+
+Seven routes in the left sidebar. Cmd/Ctrl-K opens the command palette, Cmd/Ctrl-B toggles the sidebar.
+
+### Overview
+
+Vault stats (file count, resolved wikilinks, ratio), recent git activity, jump-back cards to your most-edited notes.
+
+### Ingest
+
+1. Drop a file or paste raw text → Memex writes it to `raw/<slug>.md`.
+2. The active **ingest model** is invoked (Claude CLI by default) with the vault as cwd.
+3. Claude reads the source, finds affected wiki pages, writes citations, creates/updates `wiki/source-<slug>.md`, appends `wiki/log.md`, and files an `ingest-reports/<datetime>-<slug>.md` with the WHY.
+4. The tree and graph refresh.
+
+### Ask
+
+A chat surface that answers questions about your wiki. The active **query model** runs from the vault root with a preamble nudging it to use Read/Grep tools on `wiki/` first, falling back to `raw/`. Conversation history is preserved per session.
+
+### Graph
+
+Full vault link graph via Cytoscape.js with the **fcose** layout. Nodes are files, edges are `[[wikilinks]]`. Tag chips (from YAML frontmatter) and a folder dropdown filter the visible subgraph. Click any node to open the file.
+
+### History
+
+Reads `git log` from the vault directory and renders each commit with subject, hash, date, and `+/~` line counts. HEAD is marked. If the vault isn't a git repo yet, an inline tip explains how to `git init`.
+
+### Provenance
+
+Per-page **citation coverage** — total claim lines vs cited claim lines. Sortable by lowest coverage, with a slider threshold that flags pages below target.
+
+**Run lint** sends the CLAUDE.md lint checklist (structure / citation / connection / freshness) to the active query model and renders the Markdown report inline.
+
+### Settings
+
+Six sub-tabs:
+
+- **Account** — current vault path; **Change…** to point at any folder.
+- **Model** — separate provider+model dropdowns for **Query** and **Ingest**. Switch a task to a different provider without losing connections to others.
+- **Connections** — connect/disconnect any of:
+  - **Claude Code (CLI)** — uses your Pro/Max subscription. No key required, just `claude` on PATH.
+  - **Anthropic API** — direct `/v1/messages`.
+  - **OpenAI API** — `/v1/chat/completions`. Live model list via `/v1/models`.
+  - **Google AI** — Gemini family via `:generateContent`.
+  - **Ollama** — local `http://localhost:11434`. Auto-detects installed models.
+  - **OpenRouter** — `/api/v1/chat/completions`. Live catalog of 80+ models.
+  
+  API keys go straight to the OS keychain (macOS Keychain / Windows Credential Manager / freedesktop Secret Service) under the service name `dev.cmblir.memex`. **Never written to disk in plaintext.**
+- **Language** — EN / 한국어 / 日本語 (UI). The drafting language for the model is independent.
+- **Appearance** — light / dark / system.
+- **About** — version + about text.
+
+### Page reader (any vault file)
+
+Click a file in the sidebar → opens with three modes:
+
+- **Source** — CodeMirror 6 with markdown highlighting, `[[wikilink]]` autocomplete (start typing `[[` and pick from a popup of every note in the vault), `⌘S` to save, 2-second idle autosave.
+- **Preview** — markdown-it render with wikilinks as live buttons.
+- **Split** — both side by side, edits propagate to the preview live.
+
+A **Backlinks** panel at the bottom lists every note that links here.
+
+Right-click any tree node for **New note / New folder / Rename / Delete**. Cmd-K jumps to any file by stem name.
 
 ---
 
 ## The pattern
 
 ```
-   projects/<slug>/    One topic = one project. Fully isolated.
-     ├─ raw/           Original sources. Immutable. 4-layer protection.
+   ~/Documents/Memex/    Your vault (or any folder you point Memex at)
+     ├─ raw/             Original sources. Immutable.
      │    │
-     │    ▼  ingest
-     ├─ wiki/          Claude-maintained pages. Entities, concepts, summaries.
-     │                 Inline citations [^src-*]. Auto cross-referenced.
-     │                 Every change is a git commit (prefixed with slug).
-     ├─ CLAUDE.md      Per-project schema (starts from a template)
-     └─ .settings.json Per-project model (Opus / Sonnet / Haiku)
+     │    ▼  Ingest page
+     ├─ wiki/            Claude-maintained pages.
+     │                   Inline citations [^src-*]. Cross-referenced.
+     │                   Frontmatter schema (CLAUDE.md per vault).
+     ├─ daily/           Daily notes (Today's note button).
+     ├─ ingest-reports/  WHY each ingest decided what it decided.
+     └─ CLAUDE.md        Maintenance rules Memex seeds on first launch.
      ▼
-   Obsidian graph + Dashboard
-                       Switch projects. Browse, query, analyze, reflect, compare, write.
+   Memex desktop + Obsidian (optional) + your shell / git client
+   All three see the same files. Memex never locks the vault.
 ```
 
-- **You**: curate sources, ask questions, direct the analysis, draw project boundaries.
-- **Claude**: summarize, cross-reference, cite, detect contradictions, file. *Scoped to the selected project.*
-- **The wiki**: compounds independently inside each project.
-
-If `projects.json` is missing or empty, the server runs in legacy mode — treating the root `wiki/ raw/` as the default project (existing setups keep working unchanged).
+- **You**: curate sources, ask questions, draw the boundaries.
+- **Claude**: summarise, cross-reference, cite, detect contradictions, commit.
+- **The wiki**: compounds with every ingest.
 
 ---
 
-## Quick start
+## Talk to your wiki from outside the app
 
-```bash
-git clone https://github.com/cmblir/memex.git
-cd memex
-python dashboard/server.py    # Python 3.10+, zero pip deps
-```
-
-Open `http://localhost:8090`. Done.
-
-<br />
+The desktop app exposes everything from inside its UI, but you may want the same vault accessible from **Claude Desktop / Claude Code** sessions running elsewhere. That's what the MCP server does.
 
 <details>
-<summary><strong>Requirements</strong></summary>
+<summary><b>4-step MCP setup wizard</b></summary>
 
-- Python 3.10+ (stdlib only)
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
-- A browser
-- Obsidian — *optional* but pre-configured. The repo ships as a ready Obsidian vault.
-
-</details>
-
----
-
-## Talk to your wiki
-
-Memex has **two chatbots**, and most people use both:
-
-| | What it answers | Setup |
-|---|---|---|
-| **Floating dashboard helper** (the bobbing Claude character at bottom-right) | *About the dashboard itself* — "where do I revert?", "what does Wiki Ratio mean?". Wiki-content questions are redirected to Query. | None — built into the dashboard. |
-| **External Claude (Code or Desktop) over MCP** | *About / inside the wiki* — read, search, write pages, ingest sources, commit. 14 tools exposed. | The 4-step wizard below. |
-
-### MCP setup wizard
-
-<details open>
-<summary><b>Step 1 — Install the server</b> &nbsp;<sub>(once, ~20 seconds)</sub></summary>
+#### Step 1 — Install the server
 
 ```bash
 bash mcp-server/install.sh
 ```
 
-Creates `mcp-server/.venv` with the `mcp` SDK and prints the absolute
-paths you'll paste into your client config. **Keep that output handy**
-for Step 2.
+Creates `mcp-server/.venv` with the `mcp` SDK and prints the absolute paths you'll paste into your client config.
 
 The 14 exposed tools:
 
 | Read-only | Mutating |
 |---|---|
 | `list_projects` `list_pages` `read_page` `search` `folder_tree` `stats` `recent_log` `list_raw_sources` `get_instructions` | `add_raw_source` `create_page` `update_page` `create_folder` `git_commit` |
-</details>
 
-<details>
-<summary><b>Step 2 — Pick your client</b> &nbsp;<sub>(open exactly one)</sub></summary>
+#### Step 2 — Pick your client
 
-<br />
-
-<details>
-<summary>🅰&nbsp; <b>Claude Code</b> &nbsp;— terminal CLI, in or out of this repo</summary>
+**Claude Code (terminal CLI):**
 
 ```bash
 claude mcp add --scope user memex \
   -- "$PWD/mcp-server/.venv/bin/python" "$PWD/mcp-server/memex_mcp.py"
-
 claude mcp list                       # memex should appear
 ```
 
-`memex` is now registered for **every** Claude Code session. To remove:
+**Claude Desktop:**
 
-```bash
-claude mcp remove memex
-```
-</details>
+> ⚠️ Quit Claude Desktop completely first (Cmd+Q on macOS).
 
-<details>
-<summary>🅱&nbsp; <b>Claude Desktop</b> &nbsp;— macOS / Windows app</summary>
-
-> ⚠️ **Quit Claude Desktop completely first** — `Cmd+Q` on macOS.
-> Closing the window only minimizes; the Dock icon keeps the old config
-> in memory otherwise.
-
-Open the config file:
-
-| OS | Path |
-|---|---|
-| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
-
-Add the `memex` block (use the absolute paths `install.sh` printed —
-replace `<you>` with your username):
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
+(macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -177,159 +243,41 @@ replace `<you>` with your username):
 }
 ```
 
-If the file already has an `mcpServers` block, just add the `memex`
-entry inside it. Reopen Claude Desktop. The 🔌 icon (top of the chat
-input) should list **14 Memex tools**.
-</details>
-
-<details>
-<summary>🅲&nbsp; <b>claude.ai web</b> &nbsp;— not supported, and why</summary>
-
-Web Claude only supports remote HTTP / SSE MCP servers via Connectors —
-it cannot reach a local stdio process. Use **Claude Desktop** for the
-local Memex vault, or expose the server over the network with
-`mcp-proxy` if you really need browser access.
-</details>
-</details>
-
-<details>
-<summary><b>Step 3 — Verify</b> &nbsp;<sub>(30 seconds)</sub></summary>
-
-Open a new chat in your client and ask:
+#### Step 3 — Verify
 
 > List my Memex projects.
 
-Claude should call `list_projects` and reply with names from
-`projects.json`. If you see *"tool not found"* or *"memex not connected"*:
+Claude should call `list_projects` and reply.
 
-- Claude Code → re-run `claude mcp list` and check the path.
-- Claude Desktop → confirm the JSON is valid (`python -m json.tool < <config>`),
-  then **fully quit and reopen** (not just close the window).
-</details>
+#### Step 4 — Pin the schema (optional)
 
-<details>
-<summary><b>Step 4 — Pin the schema</b> &nbsp;<sub>(optional, recommended for long sessions)</sub></summary>
-
-At the start of an ingestion-heavy chat, paste:
+At the start of an ingestion-heavy chat:
 
 > Call `memex.get_instructions` once. From now on treat factual content
 > I share as wiki ingestion — write to the wiki with citations, ask
-> before creating new pages, commit at the end. Anything I mark as
-> *"draft"* stays in chat only.
+> before creating new pages, commit at the end.
 
-This loads the project's `CLAUDE.md` (frontmatter rules, citation format,
-contradiction policy) so Claude follows them without you repeating each turn.
 </details>
 
-### Use chat content as wiki sources
-
-Once `memex` is registered, just talk to Claude in plain language — it
-picks the right tools from intent.
-
-| You say… | Claude does |
-|---|---|
-| *"Save this conversation to my Memex wiki as **Transformer scaling discussion**."* | composes a markdown summary → `add_raw_source` → updates affected entity / concept pages with `[^src-*]` citations → appends `wiki/log.md` → `git_commit` |
-| *"Add what we just discussed about **scaling laws vs data quality** as an analysis page."* | `search` for related pages → `create_page(type=analysis)` → links from the closest entities → `git_commit` |
-| *"Show me everything we have on **RLHF** and where sources conflict."* | `search` + `read_page` across hits → synthesized answer with contradictions surfaced |
-| *"Switch the active project to **ml-papers** before we continue."* | `list_projects` → server-side switch → subsequent reads/writes scope to that project |
-
-### MCP troubleshooting
-
-<details>
-<summary><b>Claude Desktop doesn't list the <code>memex</code> server</b></summary>
-
-1. Validate the config is valid JSON:
-   ```bash
-   python -m json.tool < ~/Library/Application\ Support/Claude/claude_desktop_config.json
-   ```
-2. Verify both paths exist:
-   ```bash
-   ls -la /Users/<you>/Memex/mcp-server/.venv/bin/python \
-          /Users/<you>/Memex/mcp-server/memex_mcp.py
-   ```
-3. `Cmd+Q` Claude Desktop, then reopen.
-</details>
-
-<details>
-<summary><b><code>add_raw_source</code> refused: "file exists"</b></summary>
-
-`raw/` is immutable by design — the tool refuses to overwrite. Use a
-different `slug`, or update the wiki page through `update_page` instead.
-</details>
-
-<details>
-<summary><b>Tools succeed but writes don't show in the dashboard</b></summary>
-
-Both surfaces share `projects.json` and `wiki/`. Reload the dashboard
-page — it polls but doesn't auto-push. Confirm the write committed in
-`wiki/log.md`.
-</details>
-
-The MCP server and the dashboard share the same `projects.json` and
-`wiki/` tree, so changes from either surface are immediately visible.
-Full tool reference in [`mcp-server/README.md`](mcp-server/README.md).
+The MCP server and the Memex desktop app and the dashboard all share the same `wiki/` tree, so changes from any surface are immediately visible in the others.
 
 ---
 
-## What you get
+## The dashboard (alternate surface)
 
-<table>
-<tr>
-<td width="50%" valign="top">
+A browser UI at `localhost:8090` that predates the desktop app. Still useful for:
 
-### ◆ Core operations
-- **Ingest** — Paste source → diff + WHY report + auto-commit
-- **Query** — Ask the wiki. Tracks files read, Wiki Ratio, tokens
-- **Lint** — 16-point health check + auto-fix
-- **Reflect** — Weekly meta-analysis of the whole wiki
-- **Write** — Draft essays from the wiki, citations auto-inserted
-- **Compare** — Two pages → similarities/differences
-- **Review** — Spaced review of stale pages
-- **Search** — TF-IDF full-text, zero deps
-- **Slides** — Export any page as a Marp deck
-- **Graph** — Force-directed knowledge graph
+- **Multi-project** switching with header dropdown (Cmd+P focus)
+- **Wiki Ratio gauge** per project
+- **One-click revert** of any ingest commit
+- **WHY reports** rendered inline
+- **Bilingual UI** (EN / 한국어)
+- **Floating Claude character** chatbot for dashboard help
 
-</td>
-<td width="50%" valign="top">
+The dashboard shells out to `claude` CLI for every operation.
 
-### ◆ Infrastructure
-- **Multi-project** — isolated wikis, models, templates under one dashboard
-- **Git-backed history** — every ingest is a commit (`ingest(slug): ...`)
-- **One-click revert** — undo any ingest
-- **Inline citations** — `[^src-*]` rendered as badges
-- **raw/ immutability** — 4 layers of protection, applied to every project's `raw/`
-- **Adaptive indexing** — flat → hierarchical → indexed (auto)
-- **Schema (CLAUDE.md)** — root common + per-project
-- **WHY reports** — every ingest explains its own decisions
-- **Query log** — per-project Wiki Ratio gauge
-- **Bilingual UI** — EN / 한국어 toggle
-- **Model selector** — Opus / Sonnet / Haiku, pickable per project
-
-</td>
-</tr>
-</table>
-
----
-
-## The dashboard
-
-<div align="center">
-<em>Monochrome. Categorized. Interactive.</em>
-</div>
-
-<br />
-
-- **Black & white** — color is reserved for status and diffs only.
-- **Project selector** — header dropdown switches the active project (`Cmd/Ctrl + P` to focus). `+` creates a new project, `×` soft-deletes.
-- **Model-linked** — the model dropdown syncs to the selected project's model. Different models per project are fine.
-- **Categorized toolbar** — 13 operations in 5 dropdowns (Work, Analyze, Browse, Create, More).
-- **Resizable sidebar** — drag the edge, or `Cmd/Ctrl + B` to collapse.
-- **Folder continuous view** — click a folder *name* to read all its pages in one scroll.
-- **Live status** — Claude CLI + Obsidian detection, raw facts only.
-- **Wiki Ratio gauge** — per-project: how often Claude reached into wiki vs raw. Below 0.4 means the wiki isn't replacing raw yet.
-- **Floating Claude character** — click for an in-dashboard chatbot that answers questions *about the dashboard*. Wiki-content questions get redirected to Query.
-
-### Views
+<details>
+<summary>Screenshots</summary>
 
 <table>
 <tr>
@@ -337,229 +285,95 @@ Full tool reference in [`mcp-server/README.md`](mcp-server/README.md).
 <td width="50%"><img src="docs/screenshots/graph.png" alt="Knowledge graph" /></td>
 </tr>
 <tr>
-<td align="center"><sub><strong>Overview</strong> — wiki stats, coverage areas, getting started</sub></td>
-<td align="center"><sub><strong>Graph</strong> — force-directed knowledge graph</sub></td>
+<td align="center"><sub><strong>Overview</strong></sub></td>
+<td align="center"><sub><strong>Graph</strong></sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/screenshots/ingest.png" alt="Ingest" /></td>
 <td width="50%"><img src="docs/screenshots/history.png" alt="History" /></td>
 </tr>
 <tr>
-<td align="center"><sub><strong>Ingest</strong> — paste source, Claude generates pages</sub></td>
-<td align="center"><sub><strong>History</strong> — git-backed ingest timeline with revert</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/screenshots/provenance.png" alt="Provenance" /></td>
-<td width="50%"><img src="docs/screenshots/query.png" alt="Query" /></td>
-</tr>
-<tr>
-<td align="center"><sub><strong>Provenance</strong> — per-page citation coverage</sub></td>
-<td align="center"><sub><strong>Query</strong> — ask the wiki, tracks files read</sub></td>
+<td align="center"><sub><strong>Ingest</strong></sub></td>
+<td align="center"><sub><strong>History</strong></sub></td>
 </tr>
 </table>
 
-<sub><em>Want your own screenshots? Run <code>docs/capture.sh</code> while the server is up.</em></sub>
+</details>
 
 ---
 
-## How knowledge accumulates
+## Build from source
 
-Everything below happens inside `projects/<slug>/` (or at the root in legacy mode):
+### Desktop app
 
-```
-You drop a source ─────►  projects/<slug>/raw/article.md
-                          │
-                          ▼
-  Claude runs with the project root as cwd and loads its CLAUDE.md:
-  ├─ wiki/sources/source-article.md   (source summary)
-  ├─ wiki/entities/entity-X.md        (new or updated)
-  ├─ wiki/concepts/concept-Y.md       (new or updated, with citations)
-  ├─ wiki/index.md                    (updated)
-  ├─ wiki/log.md                      (appended)
-  └─ ingest-reports/...md             (WHY report)
-
-                          │
-                          ▼
-  git commit "ingest(<slug>): <title>"
-                          │
-                          ▼
-  Dashboard shows: diff + reasoning + approve / revert
-```
-
-Every ingest is revertable. Every claim has a citation. Every contradiction gets one of three policies (Historical / Disputed / Superseded). Each project is fully isolated — an ingest in project A cannot touch project B's files.
-
----
-
-## CLI usage
-
-Three surfaces, one wiki — pick whichever fits the moment.
-
-**1. Dashboard** — visual graph + form-driven ingest at `http://localhost:8090`.
-
-**2. Claude Code in this repo** — the dashboard shells out to `claude -p`,
-so the same prompts work from a terminal here:
+Prerequisites: Node 20+, Rust 1.77+, and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
 
 ```bash
-claude
-"Ingest raw/some-article.md"
-"What is Self-Attention?"
-"Lint the wiki"
-"Reflect on the last 10 ingests"
+cd app
+npm install
+npm run tauri dev       # hot-reload dev window
+npm run tauri build     # release bundle in src-tauri/target/release/bundle/
 ```
 
-**3. MCP from anywhere** — once `mcp-server/install.sh` is registered,
-any Claude Code session (in or out of this repo) and Claude Desktop can
-call the 14 Memex tools directly. See the [Talk to your wiki](#talk-to-your-wiki)
-section above for the 4-step setup wizard.
+See [`app/README.md`](app/README.md) for the full development guide,
+architecture diagram, and IPC surface.
 
-All three share `projects.json` and the `wiki/` tree — changes are
-immediately visible across surfaces.
+### Dashboard / MCP
+
+Already covered above — no compilation needed, just Python 3.10+.
 
 ---
 
-## Configuration
+## Multi-project
 
-```bash
-# Environment variables
-CLAUDE_TIMEOUT=1200  python dashboard/server.py   # 20-min timeout for large ingests
-CLAUDE_QUICK_TIMEOUT=30
-CLAUDE_TOOLS=Edit,Write,Read,Glob,Grep
-```
+The dashboard supports running multiple independent wikis under one server. Each lives under `projects/<slug>/` with its own `wiki/ raw/ CLAUDE.md .settings.json`.
 
-**Per-project settings**
-- `projects/<slug>/.settings.json` — current project's model. Editable via the header model dropdown.
-- `projects/<slug>/CLAUDE.md` — Claude rules for that project. Starts from a template copy; edit freely.
-- `projects.json` — registry + currently active project.
+Templates scaffold `wiki/` subfolders at creation time:
 
-**Root common schema**
-- `CLAUDE.md` (root) — universal rules across projects (truthfulness, git, modularization, performance). Per-project `CLAUDE.md` takes precedence, but the core principles stay.
+| Template | Default folders |
+|---|---|
+| `generic` | `sources entities concepts techniques analyses` |
+| `llm-research` | `sources models techniques concepts entities benchmarks analyses` |
+| `reading-log` | `sources authors ideas quotes reviews` |
+| `personal-notes` | `daily topics people projects` |
 
-Adjust frontmatter rules, citation rules, contradiction resolution, ingest workflow, and the lint checklist here — changes take effect on the next operation.
-
----
-
-## Troubleshooting
-
-<details>
-<summary><strong>"Claude CLI timeout"</strong></summary>
-
-Default is 10 min. Increase with `CLAUDE_TIMEOUT=1800`. The dashboard shows a **Run Claude CLI diagnostic** button on timeout — it calls `/api/claude/diagnose` and checks installation, auth, response time, model speed.
-
-</details>
-
-<details>
-<summary><strong>"vault not registered"</strong></summary>
-
-Hover the status bar — it shows your project path vs Obsidian's known vaults. Click **Register** to auto-add to `obsidian.json`, then restart Obsidian.
-
-</details>
-
-<details>
-<summary><strong>Slow ingestion</strong></summary>
-
-Opus 4.7 is slowest. Switch to **Sonnet 4.6** or **Haiku 4.5** in the header dropdown for faster ingests.
-
-</details>
-
-<details>
-<summary><strong>Expecting value: line 1 column 1</strong></summary>
-
-This is Python's empty-JSON error. Fixed — all endpoints now return valid JSON even on crash. If you still see it, check `/tmp/wiki-server.log` for the traceback.
-
-</details>
+The desktop app currently focuses on a single vault. To switch vaults, use Settings → Account → Change.
 
 ---
 
 ## Repository layout
 
 ```
-raw/                       (legacy) Immutable sources — moved under a project on migration
-wiki/                      (legacy) Claude-maintained pages
-  index.md                 Content catalog (auto flat/hierarchical)
-  log.md                   Activity timeline
-  overview.md              Stats + coverage areas
-ingest-reports/            One WHY report per ingest
-reflect-reports/           Weekly meta-analyses
-projects/                  Multi-project root (see section below)
-  <slug>/
-    CLAUDE.md              Project schema
-    .settings.json         Per-project model, etc.
-    wiki/                  Project wiki (sources/entities/concepts/...)
-    raw/                   Project sources
-    ingest-reports/, reflect-reports/, plans/, query-log.jsonl
-projects.json              Project registry (active + list)
-templates/                 Project templates (generic + variants)
-plans/                     Work queue / backlog / blocked
-logs/                      Autonomous-mode session logs
-dashboard/
-  server.py                Zero-dep API server
-  project_registry.py      Project resolver + registry
-  index.html               Single-file dashboard UI
-  provenance.py            Citation parsing + coverage
-  index_strategy.py        Adaptive indexing
-  claude_character.svg     The floating helper
+app/                       Memex desktop app (Tauri 2 + React)
+  src/                       React frontend (TS)
+  src-tauri/                 Rust shell + IPC
+  README.md                  Desktop app docs
+  PLAN.md / PROGRESS.md      Build history
+mcp-server/                MCP server (14 tools)
+  memex_mcp.py
+  install.sh
+dashboard/                 Browser dashboard
+  server.py                  Zero-dep Python API
+  index.html                 Single-file UI
+  project_registry.py        Multi-project resolver
+  provenance.py
+  index_strategy.py
 CLAUDE.md                  Root common schema
-.obsidian/                 Pre-configured vault
+projects/                  Per-project vaults (dashboard / MCP)
+  <slug>/
+    CLAUDE.md
+    .settings.json
+    wiki/  raw/  ingest-reports/
+projects.json              Active project + registry (dashboard / MCP)
+templates/                 Project templates
+raw/ wiki/ ...             Legacy single-project mode (still supported)
 ```
 
 ---
 
-## Multi-project
+## Dashboard API
 
-Run multiple independent topics (projects) from a single dashboard. Each project has its own `wiki/ raw/ CLAUDE.md .settings.json`, with independently configurable model, template, and folder structure.
-
-**In the dashboard**
-
-- Header dropdown to switch the active project (Cmd/Ctrl+P to focus)
-- `+` button opens the New Project modal (title / slug / description / template / model)
-- `×` button moves the current project to `projects/.trash/` (soft delete; files preserved)
-- Switching scopes every subsequent action (Ingest / Query / Lint / Write / Compare / ...) to that project's `raw/` and `wiki/`
-
-**Templates**
-
-Choosing a template at creation time automatically scaffolds `wiki/` subfolders:
-
-| Template | Default folders |
-|---|---|
-| generic | `sources entities concepts techniques analyses` |
-| llm-research | `sources models techniques concepts entities benchmarks analyses` |
-| reading-log | `sources authors ideas quotes reviews` |
-| personal-notes | `daily topics people projects` |
-
-Template `CLAUDE.md` files live at `templates/<name>/CLAUDE.md` and are copied (with `{{TOPIC}}` / `{{PURPOSE}}` substitution) into the new project.
-
-**API (available from the command line too)**
-
-```bash
-# List projects + active
-curl http://localhost:8090/api/projects
-
-# Create
-curl -X POST http://localhost:8090/api/projects/create \
-  -H 'Content-Type: application/json' \
-  -d '{"slug":"ml-papers","title":"ML Papers","description":"papers",
-       "model":"claude-sonnet-4-6","template":"llm-research"}'
-
-# Switch
-curl -X POST http://localhost:8090/api/projects/switch \
-  -H 'Content-Type: application/json' -d '{"slug":"ml-papers"}'
-
-# Scoped calls
-curl "http://localhost:8090/api/wiki?project=ml-papers"
-curl -X POST http://localhost:8090/api/ingest \
-  -H 'Content-Type: application/json' \
-  -d '{"project":"ml-papers","title":"...","content":"..."}'
-```
-
-**Legacy compatibility**
-
-If `projects.json` is missing or empty, the server runs in legacy mode — treating the root `wiki/ raw/ CLAUDE.md` as the default project. Existing setups keep working unchanged until you create your first project.
-
----
-
-## API
-
-Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project scope via the `?project=<slug>` query string (GET) or a `"project"` field in the JSON body (POST); omitting it falls back to the active project.
+The dashboard server exposes 35+ endpoints, all of which accept a `?project=<slug>` query string (GET) or `"project"` JSON field (POST) for project scoping.
 
 <details>
 <summary><strong>Show all endpoints</strong></summary>
@@ -568,12 +382,12 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/projects` | List projects + active + legacy info |
+| GET | `/api/projects` | List + active + legacy info |
 | GET | `/api/projects/active` | Current active project |
-| GET | `/api/templates` | Available templates + recommended folders |
-| POST | `/api/projects/create` | New project (slug / title / description / model / template) |
+| GET | `/api/templates` | Templates + recommended folders |
+| POST | `/api/projects/create` | New project |
 | POST | `/api/projects/switch` | Switch active project |
-| POST | `/api/projects/update` | Update project model / title / description |
+| POST | `/api/projects/update` | Update model / title / description |
 | POST | `/api/projects/delete` | Soft delete → `projects/.trash/` |
 
 **Data / status**
@@ -582,45 +396,57 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
 |--------|------|-------------|
 | GET | `/api/status` | Claude CLI + Obsidian — raw facts only |
 | GET | `/api/wiki` | Full wiki data (project-scoped) |
-| GET | `/api/folders` | Folder tree (project-scoped) |
-| GET | `/api/hash` | Change detection (project-scoped) |
-| GET | `/api/schema` | Read CLAUDE.md (project-scoped) |
+| GET | `/api/folders` | Folder tree |
 | GET | `/api/history` | Ingest commits |
-| GET | `/api/provenance` | Citation coverage (project-scoped) |
-| GET | `/api/query-stats` | Wiki Ratio (project-scoped) |
-| GET | `/api/index/status` | Strategy badge (project-scoped) |
+| GET | `/api/provenance` | Citation coverage |
+| GET | `/api/query-stats` | Wiki Ratio |
 | GET | `/api/raw/integrity` | raw/ tampering check |
-| GET | `/api/reflect/status` | Last reflect date (project-scoped) |
-| GET | `/api/review/list` | Stale pages (project-scoped) |
-| GET | `/api/settings` | Model options + per-project current model |
-| GET | `/api/claude/diagnose` | CLI quick check |
+| GET | `/api/settings` | Model options + current |
 
-**Operations (all project-scoped)**
+**Operations**
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/ingest` | New source → wiki pages |
 | POST | `/api/query` | Ask the wiki |
-| POST | `/api/query/save` | Save answer as page |
 | POST | `/api/lint` / `/api/lint/fix` | Health check |
 | POST | `/api/reflect` | Meta-analysis |
 | POST | `/api/write` | Writing companion |
 | POST | `/api/compare` | Two-page analysis |
-| POST | `/api/review/refresh` | Refresh a stale page |
 | POST | `/api/slides` | Marp export |
 | POST | `/api/search` | TF-IDF search |
-| POST | `/api/suggest/sources` | What to ingest next |
-| POST | `/api/provenance/fix` | Add missing citations |
-| POST | `/api/index/rebuild` | Force index rebuild |
-| POST | `/api/revert` | Revert an ingest (repo-wide git) |
+| POST | `/api/revert` | Revert an ingest |
 | POST | `/api/page` / `/update` / `/delete` | Page CRUD |
 | POST | `/api/folder` | Create folder |
 | POST | `/api/schema` | Update CLAUDE.md |
-| POST | `/api/settings` | Change model (legacy → global; project → `.settings.json`) |
-| POST | `/api/assistant` | Dashboard helper chatbot (project-agnostic) |
-| POST | `/api/obsidian/register` | Add this folder to obsidian.json |
+| POST | `/api/assistant` | Dashboard helper chatbot |
 
 </details>
+
+---
+
+## Configuration
+
+### Desktop app
+
+Stored at `~/Library/Application Support/dev.cmblir.memex/settings.json`
+(macOS, equivalent path on other OSes). Holds selected provider/model
+per task, connection flags, language. **Never stores API keys** — those
+are in the OS keychain.
+
+### Dashboard
+
+```bash
+# Environment variables (optional)
+CLAUDE_TIMEOUT=1200  python dashboard/server.py
+CLAUDE_QUICK_TIMEOUT=30
+CLAUDE_TOOLS=Edit,Write,Read,Glob,Grep
+```
+
+Per-project settings live in `projects/<slug>/.settings.json` and
+`projects/<slug>/CLAUDE.md`.
+
+---
 
 ## Star History
 
@@ -636,9 +462,16 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
 
 ## Keyboard shortcuts
 
-- `Cmd/Ctrl + P` — focus the project selector
+**Desktop app:**
+- `⌘K / Ctrl-K` — command palette (jump to any page or vault file)
+- `⌘B / Ctrl-B` — toggle sidebar
+- `⌘S / Ctrl-S` — save (autosave fires 2s after last edit too)
+- `[[` in editor — wikilink autocomplete popup
+- Right-click in sidebar — new / rename / delete
+
+**Dashboard:**
+- `Cmd/Ctrl + P` — focus project selector
 - `Cmd/Ctrl + B` — toggle sidebar
-- `Esc` — close dropdowns / modals
 
 ---
 
@@ -652,5 +485,5 @@ Dashboard talks to the server via 35+ endpoints. Most endpoints accept a project
 
 <div align="center">
 <br/>
-<sub>MIT License · <a href="README-ko.md">한국어 README</a></sub>
+<sub>MIT License · <a href="README-ko.md">한국어 README</a> · <a href="app/README.md">Desktop app docs</a></sub>
 </div>

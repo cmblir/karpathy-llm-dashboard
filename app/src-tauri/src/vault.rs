@@ -25,25 +25,154 @@ pub enum FileNode {
     },
 }
 
+// Creates and seeds Memex's own vault on first launch. We default to
+// ~/Documents/Memex so the folder shows up in Finder/Files, alongside the
+// user's other documents — Memex owns it, but it is plain markdown that
+// can also be opened in Obsidian or any editor.
+//
+// Scaffolds the wiki workflow layout from CLAUDE.md:
+//   raw/             — immutable source documents
+//   wiki/            — LLM-maintained pages (with index.md, log.md)
+//   daily/           — daily notes
+//   ingest-reports/  — WHY reports for each ingest
+// Plus a top-level welcome.md and a per-vault CLAUDE.md so Claude knows
+// the wiki maintainer rules when invoked with this vault as cwd.
+//
+// Idempotent: only creates files that don't already exist.
 pub fn ensure_default_vault() -> Result<String, String> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| "no home directory found".to_string())?;
-    let target = Path::new(&home).join("Memex");
-    if !target.exists() {
-        std::fs::create_dir_all(&target)
-            .map_err(|e| format!("failed to create default vault: {e}"))?;
-        let welcome = target.join("welcome.md");
-        let _ = std::fs::write(
-            &welcome,
-            "# Welcome to Memex\n\nThis is your default vault. \
-             Use the sidebar **+** buttons to create notes and folders, \
-             and the gear icon to switch to another vault.\n\n\
-             Try a `[[wikilink]]` to see the link graph populate.\n",
-        );
-    }
+    let target = Path::new(&home).join("Documents").join("Memex");
+    seed_vault(&target)?;
     Ok(target.to_string_lossy().into_owned())
 }
+
+fn seed_vault(target: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(target)
+        .map_err(|e| format!("create vault root: {e}"))?;
+    for sub in ["raw", "wiki", "daily", "ingest-reports"] {
+        let p = target.join(sub);
+        if !p.exists() {
+            std::fs::create_dir_all(&p)
+                .map_err(|e| format!("create {sub}: {e}"))?;
+        }
+    }
+    write_if_missing(&target.join("welcome.md"), WELCOME)?;
+    write_if_missing(&target.join("CLAUDE.md"), VAULT_CLAUDE_MD)?;
+    write_if_missing(&target.join("wiki/index.md"), WIKI_INDEX)?;
+    write_if_missing(&target.join("wiki/log.md"), WIKI_LOG)?;
+    Ok(())
+}
+
+fn write_if_missing(path: &Path, content: &str) -> Result<(), String> {
+    if path.exists() {
+        return Ok(());
+    }
+    std::fs::write(path, content).map_err(|e| format!("write {path:?}: {e}"))
+}
+
+const WELCOME: &str = r#"# Welcome to Memex
+
+This is your Memex vault. Everything you write here lives in plain
+markdown on disk — you stay in control.
+
+## Layout
+
+- `raw/` — drop or paste sources here (PDF, text, articles). Treat as
+  immutable; Memex never modifies these.
+- `wiki/` — your maintained pages: entities, concepts, techniques,
+  analyses, plus `index.md` and `log.md`.
+- `daily/` — daily notes (`YYYY-MM-DD.md`). Use the sidebar
+  **Today's note** button.
+- `ingest-reports/` — auto-generated reports each time you ingest a
+  source.
+
+## Quick start
+
+1. Type `[[` anywhere to autocomplete a wikilink to another note.
+2. Click **Ingest** in the sidebar to drop a source — Claude will
+   integrate it into your wiki with citations.
+3. Click **Ask** to question your wiki; answers cite the pages they
+   come from.
+4. The **Graph** view shows every wikilink across the vault.
+
+Open Settings → Connections to wire up your LLM provider (Claude CLI,
+Anthropic API, OpenAI, Gemini, Ollama, or OpenRouter).
+"#;
+
+const VAULT_CLAUDE_MD: &str = r#"# Memex Vault — Maintenance Rules
+
+This vault is maintained by Claude through the Memex desktop app. The
+following rules govern how Claude reads and writes files when invoked
+with this vault as cwd.
+
+## Directory rules
+
+- `raw/` is **immutable**. Read only. Never edit, rename, or delete.
+- `wiki/` is the LLM-maintained area. You own this entirely.
+- `daily/` holds daily journals; do not rewrite past dates.
+- `ingest-reports/` is append-only.
+
+## Page frontmatter
+
+Every `wiki/` page MUST start with:
+
+```yaml
+---
+title: "..."
+type: source-summary | entity | concept | technique | analysis
+created: YYYY-MM-DD
+last_updated: YYYY-MM-DD
+source_count: N
+confidence: high | medium | low
+status: active | superseded | disputed
+---
+```
+
+## Citation rules
+
+- Every factual claim ends with `[^src-<slug>]`.
+- Footnote definitions at the bottom point to a `[[source-<slug>]]` page.
+- Each citation slug corresponds to a real file in `raw/<slug>.md`.
+
+## On ingest
+
+When the user drops a source via Memex's Ingest page, Claude is called
+with the prompt and the new `raw/<slug>.md` already written. Steps:
+
+1. Read the full source.
+2. Identify pages in `wiki/` that this source affects.
+3. Update those pages with new claims + citations.
+4. Create the `wiki/source-<slug>.md` summary (300–500 words).
+5. Update `wiki/index.md` (catalog) and append to `wiki/log.md`.
+6. Write `ingest-reports/<datetime>-<slug>.md` with the WHY.
+"#;
+
+const WIKI_INDEX: &str = r#"# Index
+
+Catalog of all wiki pages, grouped by type.
+
+## Sources
+_(empty — drop something via Ingest)_
+
+## Entities
+_(empty)_
+
+## Concepts
+_(empty)_
+
+## Techniques
+_(empty)_
+
+## Analyses
+_(empty)_
+"#;
+
+const WIKI_LOG: &str = r#"# Log
+
+Chronological record of vault activity.
+"#;
 
 pub fn open_vault(path: &str) -> Result<VaultMeta, String> {
     if path.is_empty() {

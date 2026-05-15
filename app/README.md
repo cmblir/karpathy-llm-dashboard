@@ -1,43 +1,108 @@
 # Memex
 
 A cross-platform desktop wiki app for plain markdown vaults. Built with
-Tauri 2 + React + TypeScript. Ships as a small native bundle (no Chromium),
-edits real files on disk, and resolves `[[wikilinks]]` like Obsidian.
+Tauri 2 + React 18 + TypeScript. Ships as a small native bundle (no
+Chromium), edits real files on disk, talks to your choice of LLM provider,
+and grows a citation-aware knowledge graph as you work.
 
 ## What is Memex?
 
-Memex is an editor for a directory of markdown files. Open any folder; it
-becomes the vault. Files stay on disk in their original layout; nothing is
-rewritten or copied into a proprietary store. Memex adds the things a plain
-editor doesn't:
+Memex is **one app** that combines four things you'd otherwise stitch
+together yourself:
 
-- A two-pane source/preview workflow with live wikilink resolution
-- A backlinks panel that lists every file linking into the current note
-- A graph view of the entire vault (nodes = files, edges = wikilinks)
-- Tag and folder filters on the graph for quick subsetting
-- Atomic disk writes (tempfile + rename) so saves never tear
+- **A markdown editor** — Obsidian-style `[[wikilinks]]`, autocomplete,
+  backlinks, live preview, CodeMirror source, autosave.
+- **A knowledge wiki** — pages of type `source-summary / entity / concept
+  / technique / analysis`, YAML frontmatter schema, citation lint,
+  provenance scan.
+- **An LLM client** — Claude Code CLI, Anthropic API, OpenAI, Google
+  Gemini, Ollama, OpenRouter. Pick a different model for ingest vs ask;
+  keys live in your OS keychain.
+- **A vault you own** — everything is plain markdown on disk. Open the
+  folder in Finder, in Obsidian, in Vim — Memex never locks your data.
+
+Memex creates its own vault at `~/Documents/Memex/` on first launch
+(scaffolded with `raw/`, `wiki/`, `daily/`, `ingest-reports/` and a
+maintenance `CLAUDE.md`). You can point it at any other directory from
+Settings → Account.
+
+## Highlights
+
+### Writing
+
+| | |
+| --- | --- |
+| `[[wikilink]]` autocomplete | Type `[[` in the editor, every file stem in the vault appears in a popup |
+| Source / Split / Preview | Three modes in the editor header; preview wraps the live document so wikilinks resolve in real time |
+| Save | `⌘S` or automatic 2-second debounce; atomic write (tempfile + rename) so you never see a half-saved file |
+| Backlinks | Every page shows inbound links at the bottom |
+| Today's note | Sidebar button creates / opens `daily/YYYY-MM-DD.md` |
+| Right-click | New note / new folder / rename / delete on any tree node |
+
+### Knowledge wiki
+
+| | |
+| --- | --- |
+| Ingest | Drop a file or paste raw text → Memex writes `raw/<slug>.md` → invokes the active model with the ingest workflow → Claude reads, summarises, extracts entities/concepts, cross-links existing pages, writes a `wiki/source-<slug>.md` summary, updates `index.md` + `log.md`, and files a WHY report in `ingest-reports/` |
+| Ask | Question your wiki; the model answers with citations to vault pages |
+| Lint | "Run lint" in Provenance shells the CLAUDE.md checklist (structure / citation / connection / freshness) to the active model and renders a Markdown report |
+| Provenance | Per-page citation coverage (claim lines vs cited claims); sort by lowest coverage, slider threshold flags below-target pages |
+| History | Reads the vault's `git log` — every Memex action that involves committing shows up here, with `±` line counts |
+| Graph | Full vault link graph via Cytoscape.js (fcose layout). Tag chips from frontmatter and a folder dropdown filter the subgraph. Click a node to open the file |
+
+### Model connections
+
+Settings → Connections lets you connect any combination of:
+
+- **Claude Code (CLI)** — uses your Pro/Max subscription. No key needed; just have `claude` on PATH.
+- **Anthropic API** — direct `/v1/messages`. Key from console.anthropic.com.
+- **OpenAI API** — `/v1/chat/completions`. Live model list fetched from `/v1/models`.
+- **Google AI** — `:generateContent` for the Gemini family.
+- **Ollama** — local `http://localhost:11434`. Auto-detects installed models.
+- **OpenRouter** — `/api/v1/chat/completions`. Live catalog of 80+ models.
+
+API keys go straight to the OS keychain (macOS Keychain Access / Windows
+Credential Manager / freedesktop Secret Service) under the service name
+`dev.cmblir.memex`. They never touch the disk in plaintext.
+
+Settings → Model gives you separate provider+model dropdowns for the two
+tasks Memex performs — **Query** (Ask the wiki) and **Ingest** — so you
+can run e.g. Claude Sonnet for ingest and a local Llama for Q&A.
+
+### Interface
+
+- Notion-flavored shell: warm-white light or near-black dark, three
+  density modes, custom accent colour.
+- Three UI languages: English / 한국어 / 日本語. The model's drafting
+  language is independent of the UI.
+- `⌘K` command palette (jumps to any route or vault file).
+- `⌘B` toggles the sidebar.
 
 ## Install
 
-Download `Memex_x.y.z_aarch64.dmg` (macOS Apple Silicon) or
-`Memex_x.y.z_x64-setup.exe` (Windows) from a tagged release, mount/run, drag
-to Applications/Programs.
+Download a release bundle:
 
-The first launch opens with no vault. Click **Open…** in the sidebar header
-to pick a directory; Memex remembers the choice for next launch.
+- macOS Apple Silicon: `Memex_x.y.z_aarch64.dmg`
+- Windows x64: `Memex_x.y.z_x64-setup.exe` (when CI publishes one)
+
+Mount/run, drag to Applications.
+
+On first launch Memex creates `~/Documents/Memex/` and seeds it with the
+canonical layout. To use a different folder, open Settings → Account →
+Change…
 
 ## Dev
 
-Prerequisites: Node 20+, Rust 1.77+, platform-specific Tauri prerequisites
-(see <https://tauri.app/start/prerequisites/>).
+Prerequisites: Node 20+, Rust 1.77+, plus platform-specific Tauri
+prerequisites (<https://tauri.app/start/prerequisites/>).
 
 ```bash
 cd app
 npm install
-npm run tauri dev
+npm run tauri dev      # hot-reload dev window
 ```
 
-Other useful scripts:
+Other scripts:
 
 ```bash
 npm run build          # frontend type-check + vite bundle
@@ -45,12 +110,10 @@ npm run lint           # eslint over src/
 npm run format         # prettier write src/
 cargo fmt              # in app/src-tauri
 cargo clippy -- -D warnings
-cargo test
+cargo test             # Rust unit tests (29 currently)
 ```
 
 ## Build
-
-Produce a release bundle for the host platform:
 
 ```bash
 cd app
@@ -59,65 +122,101 @@ npm run tauri build
 
 Outputs land in `app/src-tauri/target/release/bundle/`:
 
-- `dmg/Memex_x.y.z_aarch64.dmg` — macOS installer
-- `nsis/Memex_x.y.z_x64-setup.exe` — Windows installer (when run on Windows)
+- `dmg/Memex_x.y.z_aarch64.dmg` — macOS installer (~3.4 MB)
+- `nsis/Memex_x.y.z_x64-setup.exe` — Windows installer (when built on Windows)
+- `macos/Memex.app/` — raw `.app` bundle
 
-The Cargo release profile uses `lto`, `opt-level = "s"`, and `strip = true`,
-so the resulting binary is small (~5 MB on Apple Silicon).
+The release profile uses `lto`, `opt-level = "s"`, and `strip = true`.
 
 ## Architecture
 
 ```
 app/
-├── src/                       # React + Vite frontend
-│   ├── components/            # Pure UI components
-│   │   ├── Sidebar.tsx
-│   │   ├── Splitter.tsx
-│   │   ├── Editor.tsx         # CodeMirror 6 mount
-│   │   ├── Viewer.tsx         # markdown-it preview
-│   │   ├── ModeToggle.tsx
+├── src/                       # React 18 + Vite 5 + TypeScript 5
+│   ├── App.tsx                # shell wiring, ⌘K/⌘B, theme/density
+│   ├── components/
+│   │   ├── Sidebar.tsx        # recursive vault tree + context menu
+│   │   ├── Topbar.tsx         # breadcrumb, claude status, lang switch
+│   │   ├── CommandBar.tsx     # ⌘K palette (routes + files)
+│   │   ├── Editor.tsx         # CodeMirror 6 + wikilink autocomplete
+│   │   ├── Viewer.tsx         # markdown-it preview (wikilink → onLinkClick)
 │   │   ├── BacklinksPanel.tsx
-│   │   ├── GraphView.tsx      # Cytoscape.js
-│   │   └── GraphFilters.tsx
-│   ├── stores/                # Zustand stores
-│   │   ├── vaultStore.ts      # vault, files, active file, save
-│   │   └── uiStore.ts         # view mode, panel state, filters
-│   └── lib/                   # Pure helpers
+│   │   ├── DialogHost.tsx     # custom prompt/confirm (WKWebView strips natives)
+│   ├── pages/
+│   │   ├── PageOverview.tsx   # stats + recent git
+│   │   ├── PageIngest.tsx     # drop → raw/ → model → wiki
+│   │   ├── PageQuery.tsx      # ask the wiki (with cite expansion)
+│   │   ├── PageGraph.tsx      # Cytoscape.js fcose
+│   │   ├── PageHistory.tsx    # git log
+│   │   ├── PageProvenance.tsx # citation coverage + lint
+│   │   ├── PageSettings.tsx   # 6 sub-tabs
+│   │   └── PageReader.tsx     # vault page in source/split/preview
+│   ├── stores/                # Zustand
+│   │   ├── vaultStore.ts      # vault, tree, active file, adjacency
+│   │   ├── uiStore.ts         # route, sidebar, theme, lang, density
+│   │   ├── settingsStore.ts   # persisted settings mirror
+│   │   └── dialogStore.ts     # prompt/confirm queue
+│   └── lib/
 │       ├── ipc.ts             # typed Tauri invoke wrappers
-│       ├── markdown.ts        # markdown-it + wikilink rule
-│       └── wikilinks.ts
-└── src-tauri/                 # Tauri shell (Rust)
+│       ├── chat.ts            # unified complete() across providers
+│       ├── markdown.ts        # markdown-it with wikilink rule
+│       ├── icons.tsx          # SVG icon set + provider glyphs
+│       └── i18n.ts            # en/ko/ja strings
+└── src-tauri/                 # Rust shell
     ├── src/
-    │   ├── main.rs            # entry point
+    │   ├── main.rs            # entry → memex_lib::run
     │   ├── lib.rs             # Tauri builder + IPC handler list
-    │   ├── commands.rs        # IPC adapter layer
-    │   ├── vault.rs           # filesystem ops (open/list/read/write)
+    │   ├── commands.rs        # thin IPC adapter layer
+    │   ├── vault.rs           # open/list/read/write/CRUD + scaffold seed
     │   ├── parser.rs          # wikilink regex parser
-    │   └── index.rs           # link graph + SQLite cache
-    ├── capabilities/          # Tauri 2 permission policy
+    │   ├── index.rs           # link graph + tag map + SQLite cache
+    │   ├── git_log.rs         # shells `git log` and parses shortstat
+    │   ├── claude.rs          # `claude --print` bridge (CLI provider)
+    │   ├── providers.rs       # 5 HTTP adapters (anthropic/openai/google/ollama/openrouter)
+    │   ├── secrets.rs         # OS keychain wrapper (keyring crate)
+    │   ├── settings.rs        # JSON-on-disk persisted settings
+    │   └── provenance.rs      # claim/cite scanner
+    ├── capabilities/default.json
     └── tauri.conf.json
 ```
 
 ### IPC surface
 
-All communication goes through a small typed boundary defined in
-`src/lib/ipc.ts` and `src-tauri/src/commands.rs`:
+All Rust ↔ frontend communication goes through a small typed boundary
+defined in `src/lib/ipc.ts` and `src-tauri/src/commands.rs`:
 
-| Command           | Purpose                                              |
-| ----------------- | ---------------------------------------------------- |
-| `open_vault`      | Validate a directory and return canonical path/name  |
-| `list_files`      | Recursive `.md` walk; returns a tree of FileNode     |
-| `read_file`       | Read a file; parse YAML frontmatter via gray_matter  |
-| `write_file`      | Atomic write via tempfile + rename                   |
-| `parse_links`     | Extract `[[wikilinks]]` from a single file           |
-| `build_link_graph`| Full vault scan; cached at `<vault>/.memex/cache.db` |
+| Command | Purpose |
+| --- | --- |
+| `open_vault` | Validate a directory; return canonical path + name |
+| `ensure_default_vault` | Create `~/Documents/Memex/` with scaffolding if missing |
+| `list_files` | Recursive `.md` walk → `FileNode` tree |
+| `read_file` | Read a file + parse YAML frontmatter (gray_matter) |
+| `write_file` | Atomic write via tempfile + rename |
+| `create_file` / `create_folder` | Name-validated create in a parent dir |
+| `rename_path` / `delete_path` | Move within parent / remove |
+| `parse_links` | Extract `[[wikilinks]]` from one file |
+| `build_link_graph` | Full vault scan; adjacency + tag map; cached to `<vault>/.memex/cache.db` |
+| `git_log` | Shells `git log --shortstat`, parses into commits |
+| `scan_provenance` | Per-file claim/cite count |
+| `claude_check` | Locate the `claude` binary, return version |
+| `claude_run` | Pipe a prompt to `claude --print`, return stdout |
+| `chat_complete` | Generic chat: routes to provider HTTP adapter |
+| `list_provider_models` | Live model list from the active provider |
+| `set_provider_key` / `delete_provider_key` / `has_provider_key` | OS keychain |
+| `get_settings` / `set_settings` | JSON persistence |
 
 ### Storage
 
 Files on disk are the source of truth. Memex never modifies your files
-beyond explicit writes. The SQLite cache at `<vault>/.memex/cache.db`
+outside explicit writes. The SQLite cache at `<vault>/.memex/cache.db`
 holds derived link data only and is rebuilt on every `build_link_graph`
-call.
+call. Persistent app settings (not your notes) live at:
+
+- macOS: `~/Library/Application Support/dev.cmblir.memex/settings.json`
+- Windows: `%APPDATA%/Memex/settings.json`
+- Linux: `~/.config/memex/settings.json`
+
+API keys are in the OS keychain, never in this file or anywhere else.
 
 ## License
 
