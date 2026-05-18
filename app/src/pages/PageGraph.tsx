@@ -11,6 +11,55 @@ import type { Strings } from "../lib/i18n";
 import { useUIStore } from "../stores/uiStore";
 import { useVaultStore } from "../stores/vaultStore";
 
+interface ThemeColors {
+  bg: string;
+  ink: string;
+  inkSoft: string;
+  edge: string;
+  edgeHi: string;
+  accent: string;
+  source: string;
+  entity: string;
+  concept: string;
+  technique: string;
+  analysis: string;
+  other: string;
+}
+
+function readThemeColors(): ThemeColors {
+  const root = document.documentElement;
+  const cs = getComputedStyle(root);
+  const dark = root.getAttribute("data-theme") === "dark";
+  return {
+    bg: cs.getPropertyValue("--bg").trim() || (dark ? "#0f1115" : "#fafaf9"),
+    ink: cs.getPropertyValue("--ink").trim() || (dark ? "#e6e8eb" : "#111418"),
+    inkSoft:
+      cs.getPropertyValue("--ink-3").trim() || (dark ? "#8b9099" : "#6b7280"),
+    edge: dark ? "rgba(220, 224, 230, 0.18)" : "rgba(30, 35, 45, 0.14)",
+    edgeHi: dark ? "rgba(220, 224, 230, 0.55)" : "rgba(30, 35, 45, 0.45)",
+    accent:
+      cs.getPropertyValue("--accent").trim() || (dark ? "#7aa7ff" : "#3b82f6"),
+    source: "#f59e0b",
+    entity: "#8b5cf6",
+    concept: "#3b82f6",
+    technique: "#10b981",
+    analysis: "#ef4444",
+    other: dark ? "#7a8290" : "#9ca3af",
+  };
+}
+
+function nodeColorForPath(path: string, c: ThemeColors): string {
+  const name = path.split(/[\\/]/).pop()?.toLowerCase() ?? "";
+  if (name.startsWith("source-")) return c.source;
+  const parent = path.split(/[\\/]/).slice(-2, -1)[0]?.toLowerCase() ?? "";
+  if (parent === "entities") return c.entity;
+  if (parent === "concepts") return c.concept;
+  if (parent === "techniques") return c.technique;
+  if (parent === "analyses") return c.analysis;
+  if (parent === "raw") return c.other;
+  return c.concept;
+}
+
 let layoutRegistered = false;
 
 function ensureLayoutRegistered(): void {
@@ -24,6 +73,7 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   const adjacency = useVaultStore((s) => s.adjacency);
   const currentVault = useVaultStore((s) => s.currentVault);
   const setRoute = useUIStore((s) => s.setRoute);
+  const theme = useUIStore((s) => s.theme);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
@@ -47,32 +97,58 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
       containerRef.current.innerHTML = "";
       return;
     }
+    const colors = readThemeColors();
     const cy = cytoscape({
       container: containerRef.current,
       elements,
-      style: STYLE,
+      style: makeStyle(colors),
       layout: {
         name: "fcose",
         animate: false,
         fit: true,
-        padding: 30,
-        nodeSeparation: 80,
+        padding: 50,
+        nodeSeparation: 180,
+        idealEdgeLength: 160,
+        nodeRepulsion: 14000,
+        gravity: 0.18,
+        gravityRange: 3.0,
+        numIter: 2500,
       } as unknown as cytoscape.LayoutOptions,
       wheelSensitivity: 0.2,
       minZoom: 0.1,
       maxZoom: 4,
     });
+
     cy.on("tap", "node", (event) => {
       const path = event.target.id();
       setRoute(`page:${path}`);
     });
+
+    // Obsidian-style hover: highlight neighbours, dim everything else.
+    cy.on("mouseover", "node", (e) => {
+      const n = e.target;
+      const neighbourhood = n.closedNeighborhood();
+      cy.elements().not(neighbourhood).addClass("dimmed");
+      neighbourhood.addClass("highlight");
+    });
+    cy.on("mouseout", "node", () => {
+      cy.elements().removeClass("dimmed").removeClass("highlight");
+    });
+
     cy.ready(() => {
-      cy.fit(undefined, 30);
+      cy.fit(undefined, 40);
     });
     return () => {
       cy.destroy();
     };
-  }, [adjacency, tagFilter, folderFilter, currentVault?.path, setRoute]);
+  }, [
+    adjacency,
+    tagFilter,
+    folderFilter,
+    currentVault?.path,
+    setRoute,
+    theme,
+  ]);
 
   const nodeCount = adjacency
     ? new Set(
@@ -224,21 +300,36 @@ function buildElements(
 ): ElementDefinition[] {
   const nodes = new Set<string>();
   const edges: ElementDefinition[] = [];
+  const degree = new Map<string, number>();
   for (const [source, targets] of Object.entries(adjacency.forward)) {
     if (!allowed.has(source)) continue;
     nodes.add(source);
     for (const target of targets) {
       if (!allowed.has(target)) continue;
       nodes.add(target);
+      degree.set(source, (degree.get(source) ?? 0) + 1);
+      degree.set(target, (degree.get(target) ?? 0) + 1);
       edges.push({
         data: { id: `${source}::${target}`, source, target },
       });
     }
   }
+  const colors = readThemeColors();
   return [
-    ...Array.from(nodes).map((p) => ({
-      data: { id: p, label: stem(p) },
-    })),
+    ...Array.from(nodes).map((p) => {
+      const deg = degree.get(p) ?? 0;
+      // Obsidian-style: size scales with degree but stays in a readable
+      // range (16-44px). Lone nodes still show up clearly.
+      const size = Math.min(44, 16 + Math.sqrt(deg) * 8);
+      return {
+        data: {
+          id: p,
+          label: stem(p),
+          color: nodeColorForPath(p, colors),
+          size,
+        },
+      };
+    }),
     ...edges,
   ];
 }
@@ -289,31 +380,68 @@ function stem(path: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
-const STYLE: StylesheetCSS[] = [
-  {
-    selector: "node",
-    css: {
-      "background-color": "#6c8eef",
-      label: "data(label)",
-      color: "var(--ink-2)",
-      "font-size": 10,
-      "text-valign": "bottom",
-      "text-halign": "center",
-      "text-margin-y": 4,
-      width: 14,
-      height: 14,
+function makeStyle(c: ThemeColors): StylesheetCSS[] {
+  return [
+    {
+      selector: "node",
+      css: {
+        "background-color": "data(color)",
+        label: "data(label)",
+        color: c.ink,
+        "font-size": 12,
+        "font-weight": 500,
+        "text-valign": "bottom",
+        "text-halign": "center",
+        "text-margin-y": 6,
+        "text-outline-width": 2,
+        "text-outline-color": c.bg,
+        "text-outline-opacity": 1,
+        "text-wrap": "ellipsis",
+        "text-max-width": "120px",
+        width: "data(size)",
+        height: "data(size)",
+        "border-width": 0,
+        "transition-property": "opacity, background-color, border-width",
+        "transition-duration": 120,
+      },
     },
-  },
-  {
-    selector: "edge",
-    css: {
-      "line-color": "rgba(127, 127, 127, 0.28)",
-      "curve-style": "bezier",
-      width: 1,
+    {
+      selector: "edge",
+      css: {
+        "line-color": c.edge,
+        "curve-style": "bezier",
+        width: 1.5,
+        "transition-property": "line-color, opacity, width",
+        "transition-duration": 120,
+      },
     },
-  },
-  {
-    selector: "node:selected",
-    css: { "background-color": "#a4b7f2" },
-  },
-];
+    {
+      selector: "node.highlight",
+      css: {
+        "border-width": 3,
+        "border-color": c.ink,
+        color: c.ink,
+      },
+    },
+    {
+      selector: "edge.highlight",
+      css: {
+        "line-color": c.edgeHi,
+        width: 2.5,
+      },
+    },
+    {
+      selector: ".dimmed",
+      css: {
+        opacity: 0.18,
+      },
+    },
+    {
+      selector: "node:selected",
+      css: {
+        "border-width": 3,
+        "border-color": c.accent,
+      },
+    },
+  ];
+}

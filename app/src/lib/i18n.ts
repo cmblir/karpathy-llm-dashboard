@@ -52,6 +52,13 @@ export interface Strings {
   ing_step_extract: string;
   ing_step_link: string;
   ing_step_lint: string;
+  ing_step_claude: string;
+  ing_step_refresh: string;
+  ing_success_title: string;
+  ing_success_sub: string;
+  ing_open_index: string;
+  ing_open_report: string;
+  ing_run_again: string;
   q_title: string;
   q_lede: string;
   q_ph: string;
@@ -160,6 +167,13 @@ export const STRINGS: Record<Lang, Strings> = {
     ing_step_extract: "Extract entities & concepts",
     ing_step_link: "Cross-link existing pages",
     ing_step_lint: "Lint and write log",
+    ing_step_claude: "Claude reads & writes wiki",
+    ing_step_refresh: "Refresh index & link graph",
+    ing_success_title: "Ingest complete",
+    ing_success_sub: "Wiki updated · {time}",
+    ing_open_index: "Open wiki index",
+    ing_open_report: "Open ingest report",
+    ing_run_again: "Ingest another",
     q_title: "Ask the wiki",
     q_lede:
       "Memex answers from your wiki first, then reaches into raw sources only when needed. Every claim ships with a citation.",
@@ -274,6 +288,13 @@ export const STRINGS: Record<Lang, Strings> = {
     ing_step_extract: "엔티티·개념 추출",
     ing_step_link: "기존 페이지와 교차 연결",
     ing_step_lint: "린트 및 로그 기록",
+    ing_step_claude: "Claude가 위키를 작성",
+    ing_step_refresh: "인덱스·그래프 갱신",
+    ing_success_title: "가져오기 완료",
+    ing_success_sub: "위키가 갱신되었습니다 · {time}",
+    ing_open_index: "위키 인덱스 열기",
+    ing_open_report: "Ingest 보고서 열기",
+    ing_run_again: "새로 가져오기",
     q_title: "위키에 질문하기",
     q_lede:
       "Memex는 먼저 위키에서 답을 찾고, 부족할 때만 원본 소스로 들어갑니다. 모든 주장에는 인용이 따라옵니다.",
@@ -388,6 +409,13 @@ export const STRINGS: Record<Lang, Strings> = {
     ing_step_extract: "エンティティ・概念を抽出",
     ing_step_link: "既存ページと相互リンク",
     ing_step_lint: "リント & ログ書き込み",
+    ing_step_claude: "Claude がウィキを書く",
+    ing_step_refresh: "インデックス・グラフ更新",
+    ing_success_title: "取り込み完了",
+    ing_success_sub: "ウィキを更新しました · {time}",
+    ing_open_index: "ウィキインデックスを開く",
+    ing_open_report: "取り込みレポートを開く",
+    ing_run_again: "別のソースを取り込む",
     q_title: "ウィキに質問",
     q_lede:
       "Memex はまずウィキから答え、必要なときだけ原本に降りていきます。すべての主張に出典が付きます。",
