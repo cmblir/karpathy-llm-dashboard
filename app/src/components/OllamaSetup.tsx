@@ -20,32 +20,85 @@ interface Preset {
   label: string;
   blurb: string;
   ram: string;
+  size: string;
+  tier: "tiny" | "small" | "balanced" | "quality" | "code";
 }
 
 const PRESETS: Preset[] = [
+  // ───────── Under 1 GB on disk ─────────
+  {
+    id: "gemma3:270m",
+    label: "Tiny · Gemma 3 270M",
+    blurb: "Quickest possible. Honest take: too small for ingest, OK for one-line Q&A.",
+    ram: "1 GB RAM",
+    size: "~291 MB",
+    tier: "tiny",
+  },
+  {
+    id: "smollm2:360m",
+    label: "Tiny · SmolLM2 360M",
+    blurb: "Same scale as Gemma 270M, slightly better at instruction following.",
+    ram: "1 GB RAM",
+    size: "~726 MB",
+    tier: "tiny",
+  },
+  {
+    id: "gemma3:1b",
+    label: "Light · Gemma 3 1B",
+    blurb: "Best sub-1 GB quality. Decent summaries, weak at frontmatter rules.",
+    ram: "2 GB RAM",
+    size: "~815 MB",
+    tier: "small",
+  },
+  {
+    id: "qwen2.5:1.5b",
+    label: "Light · Qwen 2.5 1.5B",
+    blurb: "Just over 1 GB; better reasoning than Gemma 1B. Still tight for ingest.",
+    ram: "2 GB RAM",
+    size: "~986 MB",
+    tier: "small",
+  },
+  // ───────── 1–3 GB ─────────
   {
     id: "llama3.2:1b",
     label: "Light · Llama 3.2 1B",
-    blurb: "~770 MB. Snappy Q&A on any Apple Silicon Mac.",
-    ram: "1 GB RAM",
+    blurb: "Strong Q&A, fast on any Apple Silicon Mac.",
+    ram: "2 GB RAM",
+    size: "~1.3 GB",
+    tier: "small",
+  },
+  {
+    id: "qwen2.5:3b",
+    label: "Balanced · Qwen 2.5 3B",
+    blurb: "Reasoning sweet spot for the size. Citation-aware if prompted well.",
+    ram: "4 GB RAM",
+    size: "~1.9 GB",
+    tier: "balanced",
   },
   {
     id: "llama3.2:3b",
     label: "Balanced · Llama 3.2 3B",
-    blurb: "~2 GB. Better reasoning, still fast.",
-    ram: "3 GB RAM",
+    blurb: "Solid general-purpose. Good drafts; light on long-context ingest.",
+    ram: "4 GB RAM",
+    size: "~2.0 GB",
+    tier: "balanced",
   },
+  // ───────── 4 GB+ ─────────
   {
     id: "qwen2.5:7b",
     label: "Quality · Qwen 2.5 7B",
-    blurb: "~4.7 GB. Strong overall; good for ingest.",
+    blurb: "First size where ingest workflow holds together end-to-end.",
     ram: "8 GB RAM",
+    size: "~4.7 GB",
+    tier: "quality",
   },
   {
     id: "qwen2.5-coder:7b",
     label: "Code · Qwen 2.5 Coder 7B",
-    blurb: "~4.7 GB. Best at structured outputs / code.",
+    blurb: "Same size as Q-7B but best at JSON / structured / frontmatter output.",
     ram: "8 GB RAM",
+    size: "~4.7 GB",
+    tier: "code",
   },
 ];
 
@@ -276,7 +329,23 @@ export default function OllamaSetup({
                   opacity: installed ? 0.6 : 1,
                 }}
               >
-                <div style={{ fontWeight: 500, fontSize: 13.5 }}>{p.label}</div>
+                <div
+                  className="row"
+                  style={{ marginBottom: 2, justifyContent: "space-between" }}
+                >
+                  <div style={{ fontWeight: 500, fontSize: 13.5 }}>
+                    {p.label}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--ink-4)",
+                    }}
+                  >
+                    {p.size}
+                  </span>
+                </div>
                 <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                   {p.blurb}
                 </div>
