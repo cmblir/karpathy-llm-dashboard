@@ -591,80 +591,83 @@ function ZoomButtons({
   );
 }
 
-// Obsidian's UI sliders aren't d3-force values directly — its
-// centerStrength slider goes through a log mapping (the famous
-// `1 - log(0.109)/log(0.01) ≈ 0.5187` default is the *slider* value
-// for an internal strength of 0.109). Replicate the inverse so our
-// slider of 0.518 produces the same on-screen behaviour as Obsidian's
-// 0.518 slider. The other three sliders map linearly to d3-force.
-function obsidianCenterStrength(slider: number): number {
-  // slider ∈ [0,1] → internal ∈ [0.01, 1] along a log curve.
-  // At slider=0, internal=0.01 (almost no pull).
-  // At slider=0.518, internal≈0.109 (Obsidian's default feel).
-  // At slider=1, internal=1 (rigid lock to origin).
-  return Math.pow(0.01, 1 - slider);
+// Slider → d3-force mapping. This is the whole reason Obsidian's
+// graph view spreads into discrete dandelions while a naive linear
+// mapping balls everything up: Obsidian internally amplifies repel by
+// ~×100, scales center by ×0.1, and divides each link's pull by
+// sqrt(min(source.degree, target.degree)) so hub-to-hub springs
+// barely tug while leaf-to-hub springs hold tight.
+//
+// Confirmed against the Obsidian-extended-graph plugin source and the
+// `obsidian-typings` ForceOptions definition. With these numbers an
+// 800-node tree-shaped vault renders as discrete dandelions instead
+// of a single hairball; smaller vaults still look natural because the
+// scaling is multiplicative.
+const REPEL_SCALE = 100; // slider 10 → manyBodyStrength −1000
+const CENTER_SCALE = 0.1; // slider 0.5 → xStrength 0.05
+
+interface D3Node {
+  id: string;
+  size?: number;
+  deg?: number;
+}
+interface D3Link {
+  source: D3Node | string;
+  target: D3Node | string;
 }
 
-function runLayout(cy: Core, settings: GraphSettings): void {
-  // Obsidian-fidelity d3-force layout. Mapping confirmed against:
-  //   - github.com/your-papa/obsidian-Smart2Brain (chargeStrength = -repelStrength)
-  //   - github.com/ElsaTam/obsidian-extended-graph (typed defaults)
-  //
-  //   centerForce   → forceX/forceY strength, via obsidianCenterStrength
-  //   repelForce    → manyBodyStrength (negated, linear)
-  //   linkForce     → linkStrength (linear)
-  //   linkDistance  → linkDistance (pixels, linear)
-  //
-  // The "dandelion" silhouette emerges naturally when
-  // linkDistance ≫ repelStrength: hubs hold leaves at a fixed radius,
-  // weak inter-cluster repulsion lets each hub float in its own
-  // pocket. No special seeding, no boundingBox, no collide hack — the
-  // ratio is the whole trick.
-  const centerStrength = obsidianCenterStrength(settings.centerForce);
-  const layoutOpts = {
+function buildForceOpts(settings: GraphSettings): Record<string, unknown> {
+  // Per-link strength is degree-normalised the same way Obsidian does:
+  // a leaf with degree 1 attached to a hub of degree 30 contributes
+  // strength linkForce / sqrt(1) = linkForce, but two hubs of degree
+  // 30 linked together pull each other with only linkForce / sqrt(30)
+  // ≈ 0.18 × linkForce. That's what lets clusters drift apart instead
+  // of collapsing along their shared spine.
+  const linkStrength = (link: D3Link): number => {
+    const s = typeof link.source === "object" ? Number(link.source.deg ?? 1) : 1;
+    const t = typeof link.target === "object" ? Number(link.target.deg ?? 1) : 1;
+    return settings.linkForce / Math.max(1, Math.sqrt(Math.min(s, t)));
+  };
+  return {
     name: "d3-force",
     animate: true,
     fit: false,
-    // Obsidian halts its rAF loop after 60 idle frames — running
-    // forever creates the visible jitter that Obsidian doesn't have.
-    // alphaDecay 0.025 (d3 default) settles in ~300 ticks (~5s).
     infinite: false,
-    alphaDecay: 0.025,
-    alphaMin: 0.001,
     ungrabifyWhileSimulating: false,
     fixedAfterDragging: false,
-    randomize: false,
+    randomize: true,
     padding: 30,
-
-    velocityDecay: 0.4, // d3-force default
     linkId: (d: { id: string }) => d.id,
     linkDistance: settings.linkDistance,
-    linkStrength: settings.linkForce,
+    linkStrength,
     linkIterations: 1,
-    manyBodyStrength: -settings.repelForce,
+    manyBodyStrength: -settings.repelForce * REPEL_SCALE,
     manyBodyTheta: 0.9,
     manyBodyDistanceMin: 1,
-    // Uncapped distance is what d3-force is calibrated for; the
-    // wide-radius behaviour is also what gives Obsidian its airy
-    // clusters. Earlier caps were a band-aid for a mis-scaled
-    // manyBodyStrength.
-    manyBodyDistanceMax: Infinity,
-    xStrength: centerStrength,
+    // Cap the long-range repulsion so distant clusters stop pushing on
+    // each other once they're already comfortably apart. Without a cap
+    // every node fights every other forever and the simulation never
+    // reaches a stable resting state on dense graphs.
+    manyBodyDistanceMax: 800,
+    xStrength: Math.max(0.005, settings.centerForce * CENTER_SCALE),
     xX: 0,
-    yStrength: centerStrength,
+    yStrength: Math.max(0.005, settings.centerForce * CENTER_SCALE),
     yY: 0,
-    // cytoscape-d3-force flattens each cytoscape node into a d3
-    // simulation node (scratch position + node.data() spread on top),
-    // so we read `size` directly off the parameter, not via .data().
-    // Generous personal-space ring around each node so even
-    // 25-leaf dandelions never have leaves touching. The +6 pad is
-    // what stops adjacent petals from visually fusing.
-    collideRadius: (n: { size?: number }) => (Number(n.size) || 6) / 2 + 6,
-    collideStrength: 0.85,
+    collideRadius: (n: D3Node) => (Number(n.size) || 6) / 2 + 4,
+    collideStrength: 0.9,
     collideIterations: 1,
-  } as unknown as LayoutOptions;
+  };
+}
 
-  // Stop any in-flight simulation before kicking off a new one.
+function runLayoutWith(
+  cy: Core,
+  settings: GraphSettings,
+  override: Record<string, unknown>,
+): cytoscape.Layouts {
+  const layoutOpts = {
+    ...buildForceOpts(settings),
+    ...override,
+  } as unknown as LayoutOptions;
   cy.stop();
   const prev =
     (cy.scratch("_graph.layout") as cytoscape.Layouts | undefined) ?? null;
@@ -672,105 +675,50 @@ function runLayout(cy: Core, settings: GraphSettings): void {
   const layout = cy.layout(layoutOpts);
   cy.scratch("_graph.layout", layout);
   layout.run();
+  return layout;
 }
 
-// Same as runLayout but with a slower alpha decay so the form-up
-// animation is visible to the eye instead of converging in a frame.
-// Used by the play button to mirror Obsidian's initial-load motion.
+function runLayout(cy: Core, settings: GraphSettings): void {
+  // d3-force default alphaDecay 0.0228 settles in ~300 ticks; we slow
+  // it slightly so dense graphs have enough cooling time to find the
+  // dandelion configuration before the simulation freezes.
+  runLayoutWith(cy, settings, {
+    alpha: 1,
+    alphaDecay: 0.018,
+    alphaMin: 0.001,
+    velocityDecay: 0.45,
+  });
+}
+
+// Cinematic form-up for the timelapse "play" button — same forces,
+// just slower decay so the eye can follow each node falling into
+// place. velocityDecay 0.65 cuts momentum each tick so leaves drift
+// toward their hub at a watchable speed.
 function runLayoutAnimated(
   cy: Core,
   settings: GraphSettings,
 ): cytoscape.Layouts {
-  const centerStrength = obsidianCenterStrength(settings.centerForce);
-  const layoutOpts = {
-    name: "d3-force",
-    animate: true,
-    fit: false,
-    infinite: false,
-    // Very slow decay + heavy friction → cinematic ~12s formation.
-    // velocityDecay 0.7 (vs d3 default 0.4) is the main knob here:
-    // it cuts node momentum each tick, so they drift toward their
-    // hubs at a watchable speed instead of snapping in 200ms.
+  return runLayoutWith(cy, settings, {
     alpha: 1,
-    alphaDecay: 0.0065,
+    alphaDecay: 0.006,
     alphaMin: 0.001,
-    ungrabifyWhileSimulating: false,
-    fixedAfterDragging: false,
-    randomize: false,
-    padding: 30,
-
-    velocityDecay: 0.7,
-    linkId: (d: { id: string }) => d.id,
-    linkDistance: settings.linkDistance,
-    linkStrength: settings.linkForce,
-    linkIterations: 1,
-    manyBodyStrength: -settings.repelForce,
-    manyBodyTheta: 0.9,
-    manyBodyDistanceMin: 1,
-    manyBodyDistanceMax: Infinity,
-    xStrength: centerStrength,
-    xX: 0,
-    yStrength: centerStrength,
-    yY: 0,
-    collideRadius: (n: { size?: number }) => (Number(n.size) || 6) / 2 + 6,
-    collideStrength: 0.85,
-    collideIterations: 1,
-  } as unknown as LayoutOptions;
-
-  cy.stop();
-  const prev =
-    (cy.scratch("_graph.layout") as cytoscape.Layouts | undefined) ?? null;
-  prev?.stop();
-  const layout = cy.layout(layoutOpts);
-  cy.scratch("_graph.layout", layout);
-  layout.run();
-  return layout;
+    velocityDecay: 0.65,
+  });
 }
 
-// Variant used during the per-node-insert animation. Very low alpha
-// gives each insertion just enough kick to integrate the new node
-// without shaking the already-placed graph. High friction (0.75)
-// further damps motion so existing nodes barely flinch.
-function runLayoutGrowing(cy: Core, settings: GraphSettings): cytoscape.Layouts {
-  const centerStrength = obsidianCenterStrength(settings.centerForce);
-  const layoutOpts = {
-    name: "d3-force",
-    animate: true,
-    fit: false,
-    infinite: false,
+// Variant used during per-node-insert animation: very low alpha gives
+// each insertion a small kick rather than restarting the whole
+// simulation, so the already-placed graph barely flinches.
+function runLayoutGrowing(
+  cy: Core,
+  settings: GraphSettings,
+): cytoscape.Layouts {
+  return runLayoutWith(cy, settings, {
     alpha: 0.2,
     alphaDecay: 0.04,
     alphaMin: 0.001,
-    ungrabifyWhileSimulating: false,
-    fixedAfterDragging: false,
-    randomize: false,
-    padding: 30,
     velocityDecay: 0.75,
-    linkId: (d: { id: string }) => d.id,
-    linkDistance: settings.linkDistance,
-    linkStrength: settings.linkForce,
-    linkIterations: 1,
-    manyBodyStrength: -settings.repelForce,
-    manyBodyTheta: 0.9,
-    manyBodyDistanceMin: 1,
-    manyBodyDistanceMax: Infinity,
-    xStrength: centerStrength,
-    xX: 0,
-    yStrength: centerStrength,
-    yY: 0,
-    collideRadius: (n: { size?: number }) => (Number(n.size) || 6) / 2 + 6,
-    collideStrength: 0.85,
-    collideIterations: 1,
-  } as unknown as LayoutOptions;
-
-  cy.stop();
-  const prev =
-    (cy.scratch("_graph.layout") as cytoscape.Layouts | undefined) ?? null;
-  prev?.stop();
-  const layout = cy.layout(layoutOpts);
-  cy.scratch("_graph.layout", layout);
-  layout.run();
-  return layout;
+  });
 }
 
 function applyLabelVisibility(cy: Core, threshold: number): void {

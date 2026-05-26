@@ -28,10 +28,15 @@ export interface GraphSettings {
   linkDistance: number; // 30..500 — ideal edge length (Obsidian: linkDistance)
 }
 
-// Tuned to match Obsidian's actual graph view: low gravity, strong
-// repulsion, long edges. Produces hub-and-spoke "dandelion" clusters
-// where leaves spring radially out of their hub instead of all 21
-// nodes balling up around the centre.
+// Defaults are slider values (matching Obsidian's panel) — they are
+// scaled inside runLayout() to the actual d3-force numbers Obsidian
+// uses internally. The mapping there is:
+//   manyBodyStrength = -repelForce  × 100
+//   xStrength/yStrength =  centerForce × 0.1   (linear, not log)
+//   linkStrength = linkForce / sqrt(min(deg(a), deg(b)))   (per link)
+// That scaling is what produces discrete dandelion clusters on
+// vaults of any size; an 800-node tree with the old linear mapping
+// crushed every cluster into a single hairball.
 export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   search: "",
   showOrphans: true,
@@ -42,24 +47,16 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   textFadeThreshold: 1.1,
   nodeSize: 1,
   linkThickness: 1,
-  // Defaults tuned against the karpathy vault (21 nodes, 88 edges —
-  // very dense). Weaker links + stronger repulsion is what lets the
-  // cluster breathe; otherwise dense graphs collapse into a blob.
-  // Anchored to Obsidian's published defaults but pushed a couple of
-  // ticks tighter on centerForce and farther on linkDistance — this
-  // gives the silhouette a stronger overall-round feel (no cluster
-  // ever drifts off-axis for long) while keeping leaves visibly
-  // apart.
-  centerForce: 0.7, // → internal strength ≈ 0.158 after log curve
-  repelForce: 10,
-  linkForce: 1,
-  linkDistance: 320,
+  centerForce: 0.5, // → internal 0.05 (Obsidian's default)
+  repelForce: 10, // → internal -1000 (Obsidian's default)
+  linkForce: 1, // → ÷ sqrt(min-degree) per link
+  linkDistance: 90, // pixels — short, lets leaves sit close to hubs
 };
 
-// v10: visual second-pass — smaller font/edges/outline, degree-aware
-// label visibility. Key bumped so any user who had toggled `arrows`
-// on in v9 gets the clean Obsidian default back.
-const KEY = "memex.graph.settings.v10";
+// v11: switched to Obsidian-faithful force scaling — old slider values
+// stored under v10 produced a hairball with the new internal mapping,
+// so we force-reset everyone on first load.
+const KEY = "memex.graph.settings.v11";
 
 export function loadGraphSettings(): GraphSettings {
   try {
