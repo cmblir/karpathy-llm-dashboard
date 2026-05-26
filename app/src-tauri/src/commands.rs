@@ -29,6 +29,11 @@ pub fn list_files(root: String) -> Result<Vec<FileNode>, String> {
 }
 
 #[tauri::command]
+pub fn file_mtimes(root: String) -> Result<Vec<(String, i64)>, String> {
+    vault::file_mtimes(&root)
+}
+
+#[tauri::command]
 pub fn read_file(path: String) -> Result<FileContent, String> {
     vault::read_file(&path)
 }

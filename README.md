@@ -125,7 +125,15 @@ A chat surface that answers questions about your wiki. The active **query model*
 
 ### Graph
 
-Full vault link graph via Cytoscape.js with the **fcose** layout. Nodes are files, edges are `[[wikilinks]]`. Tag chips (from YAML frontmatter) and a folder dropdown filter the visible subgraph. Click any node to open the file.
+Full vault link graph via Cytoscape.js with the **d3-force** layout — the exact same force family Obsidian uses (`forceLink` + `forceManyBody` + `forceX/Y`). The simulation is **continuous** — drag a node and its neighbours follow; release and the cluster settles back. Nodes are files, edges are `[[wikilinks]]`. Hubs grow with link count, unresolved wikilink targets render as ghost nodes, labels fade in past a zoom threshold.
+
+A right-side settings drawer (gear icon) mirrors Obsidian's panel exactly:
+
+- **Filters** — live search by filename, tag chips, folder dropdown, toggles for *Show orphans* and *Existing files only*.
+- **Display** — *Arrows* (direction on each link), *Text fade threshold*, *Node size*, *Link thickness*.
+- **Forces** — *Center force* (xStrength / yStrength), *Repel force* (manyBodyStrength), *Link force* (linkStrength), *Link distance*. Each slider drives a real d3-force parameter, so the running simulation reacts identically to Obsidian's panel.
+
+Hover any node to spotlight its 1-hop neighbourhood (the rest dims to 12 %). Click to open the file. Zoom and pan are smooth (mouse wheel + drag-background); a small toolbar offers zoom-in / fit / zoom-out plus a **▶ Timelapse** button that reveals nodes oldest-to-newest by file mtime — watch the vault grow at the speed it actually grew. Drawer state and every slider position persist to localStorage.
 
 ### History
 

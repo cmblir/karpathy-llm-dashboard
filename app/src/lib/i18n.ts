@@ -74,6 +74,34 @@ export interface Strings {
   gr_filter: string;
   gr_node_count: string;
   gr_edge_count: string;
+  gr_settings: string;
+  gr_filters: string;
+  gr_display: string;
+  gr_forces: string;
+  gr_search: string;
+  gr_search_ph: string;
+  gr_tags: string;
+  gr_folder: string;
+  gr_all: string;
+  gr_all_folders: string;
+  gr_show_orphans: string;
+  gr_show_orphans_hint: string;
+  gr_existing_only: string;
+  gr_existing_only_hint: string;
+  gr_arrows: string;
+  gr_arrows_hint: string;
+  gr_text_fade: string;
+  gr_node_size: string;
+  gr_link_thickness: string;
+  gr_center_force: string;
+  gr_repel_force: string;
+  gr_link_force: string;
+  gr_link_distance: string;
+  gr_reset: string;
+  gr_empty_pre: string;
+  gr_empty_post: string;
+  gr_timelapse_play: string;
+  gr_timelapse_pause: string;
   h_title: string;
   h_lede: string;
   h_view: string;
@@ -186,11 +214,39 @@ export const STRINGS: Record<Lang, Strings> = {
     q_raw: "raw",
     gr_title: "Graph",
     gr_lede:
-      "Pages and the links between them. Drag to pan, scroll to zoom, click a node to focus.",
+      "Pages and the links between them. Drag nodes to feel the simulation pull, click a node to open it, open the settings panel to tune.",
     gr_legend: "Legend",
     gr_filter: "Filter",
     gr_node_count: "nodes",
     gr_edge_count: "links",
+    gr_settings: "Graph settings",
+    gr_filters: "Filters",
+    gr_display: "Display",
+    gr_forces: "Forces",
+    gr_search: "Search",
+    gr_search_ph: "filename contains…",
+    gr_tags: "Tags",
+    gr_folder: "Folder",
+    gr_all: "all",
+    gr_all_folders: "all folders",
+    gr_show_orphans: "Show orphans",
+    gr_show_orphans_hint: "Nodes with no links",
+    gr_existing_only: "Existing files only",
+    gr_existing_only_hint: "Hide unresolved [[wikilinks]]",
+    gr_arrows: "Arrows",
+    gr_arrows_hint: "Show direction on each link",
+    gr_text_fade: "Text fade threshold",
+    gr_node_size: "Node size",
+    gr_link_thickness: "Link thickness",
+    gr_center_force: "Center force",
+    gr_repel_force: "Repel force",
+    gr_link_force: "Link force",
+    gr_link_distance: "Link distance",
+    gr_reset: "Reset",
+    gr_empty_pre: "No wikilinks found in the vault yet. Add some ",
+    gr_empty_post: " to see the graph grow.",
+    gr_timelapse_play: "Play timelapse",
+    gr_timelapse_pause: "Pause timelapse",
     h_title: "History",
     h_lede:
       "Every ingest is a git commit. Inspect what changed, diff pages against earlier versions, or roll back.",
@@ -307,11 +363,39 @@ export const STRINGS: Record<Lang, Strings> = {
     q_raw: "원본",
     gr_title: "그래프",
     gr_lede:
-      "페이지와 그 사이의 연결. 드래그로 이동, 스크롤로 줌, 노드 클릭으로 포커스.",
+      "페이지와 그 사이의 연결. 노드를 드래그하면 시뮬레이션이 따라옵니다. 우측 설정 패널에서 필터/디스플레이/포스를 조정하세요.",
     gr_legend: "범례",
     gr_filter: "필터",
     gr_node_count: "노드",
     gr_edge_count: "연결",
+    gr_settings: "그래프 설정",
+    gr_filters: "필터",
+    gr_display: "디스플레이",
+    gr_forces: "포스",
+    gr_search: "검색",
+    gr_search_ph: "파일명 포함...",
+    gr_tags: "태그",
+    gr_folder: "폴더",
+    gr_all: "전체",
+    gr_all_folders: "전체 폴더",
+    gr_show_orphans: "고립 노드 표시",
+    gr_show_orphans_hint: "연결이 없는 노드",
+    gr_existing_only: "존재하는 파일만",
+    gr_existing_only_hint: "미해결 [[위키링크]] 숨김",
+    gr_arrows: "화살표",
+    gr_arrows_hint: "각 링크에 방향 표시",
+    gr_text_fade: "라벨 페이드 임계",
+    gr_node_size: "노드 크기",
+    gr_link_thickness: "링크 두께",
+    gr_center_force: "중심력",
+    gr_repel_force: "반발력",
+    gr_link_force: "링크 장력",
+    gr_link_distance: "링크 거리",
+    gr_reset: "초기화",
+    gr_empty_pre: "아직 위키링크가 없습니다. ",
+    gr_empty_post: " 를 추가하면 그래프가 자랍니다.",
+    gr_timelapse_play: "타임랩스 재생",
+    gr_timelapse_pause: "타임랩스 일시정지",
     h_title: "히스토리",
     h_lede:
       "모든 가져오기는 git 커밋입니다. 변경 내역을 보고, 이전 버전과 비교하고, 되돌릴 수 있습니다.",
@@ -428,11 +512,39 @@ export const STRINGS: Record<Lang, Strings> = {
     q_raw: "原本",
     gr_title: "グラフ",
     gr_lede:
-      "ページとリンク。ドラッグでパン、スクロールでズーム、ノードをクリックでフォーカス。",
+      "ページとリンク。ノードをドラッグするとシミュレーションが追従。右側パネルでフィルター/表示/力を調整。",
     gr_legend: "凡例",
     gr_filter: "フィルター",
     gr_node_count: "ノード",
     gr_edge_count: "リンク",
+    gr_settings: "グラフ設定",
+    gr_filters: "フィルター",
+    gr_display: "表示",
+    gr_forces: "力",
+    gr_search: "検索",
+    gr_search_ph: "ファイル名に含む…",
+    gr_tags: "タグ",
+    gr_folder: "フォルダ",
+    gr_all: "すべて",
+    gr_all_folders: "すべてのフォルダ",
+    gr_show_orphans: "孤立ノード表示",
+    gr_show_orphans_hint: "リンクなしのノード",
+    gr_existing_only: "既存ファイルのみ",
+    gr_existing_only_hint: "未解決の [[wikilinks]] を非表示",
+    gr_arrows: "矢印",
+    gr_arrows_hint: "各リンクに方向を表示",
+    gr_text_fade: "ラベルフェード閾値",
+    gr_node_size: "ノードサイズ",
+    gr_link_thickness: "リンク太さ",
+    gr_center_force: "中心力",
+    gr_repel_force: "反発力",
+    gr_link_force: "リンク張力",
+    gr_link_distance: "リンク距離",
+    gr_reset: "リセット",
+    gr_empty_pre: "まだウィキリンクがありません。",
+    gr_empty_post: " を追加するとグラフが育ちます。",
+    gr_timelapse_play: "タイムラプス再生",
+    gr_timelapse_pause: "タイムラプス一時停止",
     h_title: "履歴",
     h_lede:
       "すべての取り込みは git コミット。差分を見たり、過去のバージョンと比較したり、戻したりできます。",

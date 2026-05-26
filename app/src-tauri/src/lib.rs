@@ -21,6 +21,7 @@ pub fn run() {
             commands::open_vault,
             commands::ensure_default_vault,
             commands::list_files,
+            commands::file_mtimes,
             commands::read_file,
             commands::write_file,
             commands::read_external_text,

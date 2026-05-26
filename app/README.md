@@ -48,7 +48,7 @@ Settings → Account.
 | Lint | "Run lint" in Provenance shells the CLAUDE.md checklist (structure / citation / connection / freshness) to the active model and renders a Markdown report |
 | Provenance | Per-page citation coverage (claim lines vs cited claims); sort by lowest coverage, slider threshold flags below-target pages |
 | History | Reads the vault's `git log` — every Memex action that involves committing shows up here, with `±` line counts |
-| Graph | Full vault link graph via Cytoscape.js (fcose layout). Tag chips from frontmatter and a folder dropdown filter the subgraph. Click a node to open the file |
+| Graph | Full vault link graph via Cytoscape.js with **d3-force** (the same force family Obsidian uses). Continuous infinite simulation — drag nodes and watch neighbours follow. Right-side settings drawer mirrors Obsidian's panel: Filters (search, tags, folder, orphans, existing-only), Display (arrows, text fade, node size, link thickness), Forces (center, repel, link, link-distance) each driving the real d3-force param. Hover spotlights the 1-hop neighbourhood, click opens the file. **▶ Timelapse** button reveals nodes oldest-to-newest by file mtime. Drawer + slider state persists to localStorage |
 
 ### Model connections
 
@@ -146,7 +146,8 @@ app/
 │   │   ├── PageOverview.tsx   # stats + recent git
 │   │   ├── PageIngest.tsx     # drop → raw/ → model → wiki
 │   │   ├── PageQuery.tsx      # ask the wiki (with cite expansion)
-│   │   ├── PageGraph.tsx      # Cytoscape.js fcose
+│   │   ├── PageGraph.tsx      # Cytoscape.js + d3-force (live physics)
+│   │   ├── components/GraphControls.tsx  # right-side settings drawer (Filters/Display/Forces)
 │   │   ├── PageHistory.tsx    # git log
 │   │   ├── PageProvenance.tsx # citation coverage + lint
 │   │   ├── PageSettings.tsx   # 6 sub-tabs

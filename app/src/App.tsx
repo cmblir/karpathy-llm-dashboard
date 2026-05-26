@@ -98,6 +98,15 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (currentVault) return;
     void (async () => {
+      // Dev-only escape hatch — `?vault=/some/path` lets us point the
+      // app at an arbitrary directory for quick visual testing.
+      const urlVault = new URLSearchParams(window.location.search).get(
+        "vault",
+      );
+      if (urlVault) {
+        await openVault(urlVault);
+        if (useVaultStore.getState().currentVault) return;
+      }
       let defaultVault: string | null = null;
       try {
         defaultVault = await ipc.ensureDefaultVault();

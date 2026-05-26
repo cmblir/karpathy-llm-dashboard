@@ -24,3 +24,9 @@ docs/.venv/
 
 # Claude Code
 .claude/
+
+# Memex vault cache (link graph SQLite, etc.)
+.memex/
+
+# Local dev scratch
+commits.tsv

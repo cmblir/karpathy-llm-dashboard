@@ -1,15 +1,31 @@
-// Graph page — renders the real link graph from vault adjacency using
-// Cytoscape.js with the fcose layout. Tag chips (from frontmatter) act as
-// filters; clicking a node opens the corresponding file.
+// Graph page — Obsidian-style interactive force-directed graph of the
+// vault. cytoscape-d3-force runs the same family of forces Obsidian
+// itself uses (forceLink + forceManyBody + forceX/Y), so dragging a
+// node pulls its neighbours through the simulation and every slider
+// in the right-side drawer maps 1:1 onto a real d3-force parameter.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import cytoscape from "cytoscape";
-import type { ElementDefinition, StylesheetCSS } from "cytoscape";
-import fcose from "cytoscape-fcose";
+import type {
+  Core,
+  ElementDefinition,
+  StylesheetCSS,
+  LayoutOptions,
+} from "cytoscape";
+import d3Force from "cytoscape-d3-force";
+import GraphControls from "../components/GraphControls";
+import {
+  DEFAULT_GRAPH_SETTINGS,
+  loadGraphSettings,
+  saveGraphSettings,
+  type GraphSettings,
+} from "../lib/graphSettings";
 import type { Strings } from "../lib/i18n";
+import type { Adjacency } from "../lib/ipc";
 import { useUIStore } from "../stores/uiStore";
 import { useVaultStore } from "../stores/vaultStore";
+import { ipc } from "../lib/ipc";
 
 // Obsidian's graph view uses a deliberately monochrome palette: every
 // node is the same shade and structure comes from degree-driven sizing
@@ -32,21 +48,22 @@ function readThemeColors(): ThemeColors {
     bg: cs.getPropertyValue("--bg").trim() || (dark ? "#0f1115" : "#fafaf9"),
     ink: cs.getPropertyValue("--ink").trim() || (dark ? "#e6e8eb" : "#111418"),
     node: dark ? "#c8c8c8" : "#3a3f47",
-    // Wikilinks pointing at pages that don't exist yet — Obsidian
-    // greys these out further so unresolved targets are visually quiet.
     nodeUnresolved: dark ? "#6e7079" : "#9aa0a8",
-    edge: dark ? "rgba(220, 224, 230, 0.18)" : "rgba(30, 35, 45, 0.16)",
-    edgeHi: dark ? "rgba(220, 224, 230, 0.6)" : "rgba(30, 35, 45, 0.5)",
+    // Edges almost invisible by default — like Obsidian's graph. The
+    // structure reads through node positioning; the lines just whisper
+    // in the background until the user hovers a node, at which point
+    // the highlighted edges snap to full strength below.
+    edge: dark ? "rgba(220, 224, 230, 0.06)" : "rgba(30, 35, 45, 0.06)",
+    edgeHi: dark ? "rgba(220, 224, 230, 0.95)" : "rgba(30, 35, 45, 0.85)",
     accent:
       cs.getPropertyValue("--accent").trim() || (dark ? "#7aa7ff" : "#3b82f6"),
   };
 }
 
 let layoutRegistered = false;
-
 function ensureLayoutRegistered(): void {
   if (!layoutRegistered) {
-    cytoscape.use(fcose);
+    cytoscape.use(d3Force);
     layoutRegistered = true;
   }
 }
@@ -57,12 +74,31 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   const setRoute = useUIStore((s) => s.setRoute);
   const theme = useUIStore((s) => s.theme);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const cyRef = useRef<{
-    zoomBy: (factor: number) => void;
-    fit: () => void;
-  } | null>(null);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  const cyRef = useRef<Core | null>(null);
+  const layoutRef = useRef<cytoscape.Layouts | null>(null);
+  const settingsRef = useRef<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
+  const [settings, setSettings] = useState<GraphSettings>(() =>
+    loadGraphSettings(),
+  );
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Timelapse state — animation that reveals nodes oldest-to-newest.
+  // "Animate" — Obsidian's actual mechanic per the help docs:
+  // "Initiates a time-lapse animation where nodes appear in
+  // chronological order based on creation time." Nodes are inserted
+  // into a live physics simulation one at a time; each insertion
+  // perturbs the running graph so existing nodes wiggle as new edges
+  // pull on them. Confirmed by Obsidian forum threads.
+  const [tlPlaying, setTlPlaying] = useState(false);
+  const tlTickRef = useRef<number | null>(null);
+  const tlOrderRef = useRef<string[]>([]);
+  const tlQueueRef = useRef<string[]>([]); // mutable, drains during play
+  const tlAdjRef = useRef<Map<string, Set<string>> | null>(null);
+  const tlFullElsRef = useRef<ElementDefinition[] | null>(null);
+  settingsRef.current = settings;
+
+  useEffect(() => {
+    saveGraphSettings(settings);
+  }, [settings]);
 
   const tags = useMemo(() => collectTags(adjacency?.tags ?? {}), [adjacency]);
   const folders = useMemo(
@@ -70,113 +106,343 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     [adjacency, currentVault?.path],
   );
 
+  // (A) Mount cytoscape once. The instance is reused across every
+  // settings change to avoid re-laying-out from scratch and to keep
+  // the user's pan/zoom position stable.
   useEffect(() => {
-    if (!containerRef.current || !adjacency) return;
+    if (!containerRef.current) return;
     ensureLayoutRegistered();
-    const allowed = computeAllowed(adjacency, {
-      tagFilter,
-      folderFilter,
-      vaultRoot: currentVault?.path ?? "",
-    });
-    const elements = buildElements(adjacency, allowed);
-    if (elements.length === 0) {
-      containerRef.current.innerHTML = "";
-      return;
-    }
-    const colors = readThemeColors();
     const cy = cytoscape({
       container: containerRef.current,
-      elements,
-      style: makeStyle(colors),
-      layout: {
-        name: "fcose",
-        animate: false,
-        randomize: true,
-        fit: true,
-        padding: 60,
-        // Tuned to reproduce Obsidian's hub-and-spoke cluster look —
-        // leaves get pushed out into petals, hubs settle into the
-        // centre of their cluster, and unrelated clusters drift apart.
-        nodeSeparation: 220,
-        idealEdgeLength: 90,
-        edgeElasticity: 0.1,
-        nodeRepulsion: 22000,
-        gravity: 0.08,
-        gravityRange: 4.5,
-        gravityCompound: 1.0,
-        nestingFactor: 0.1,
-        numIter: 3500,
-        tile: false,
-      } as unknown as cytoscape.LayoutOptions,
+      elements: [],
+      style: makeStyle(readThemeColors(), settingsRef.current),
       wheelSensitivity: 0.2,
-      minZoom: 0.1,
-      maxZoom: 4,
+      minZoom: 0.02,
+      maxZoom: 8,
+      pixelRatio: window.devicePixelRatio,
+    });
+    cyRef.current = cy;
+
+    cy.on("tap", "node", (e) => {
+      // Tap only — not the end of a drag. Cytoscape fires "tap" only
+      // when click+release happens without movement past a small
+      // threshold, so this matches Obsidian's "click to open".
+      const id = e.target.id();
+      setRoute(`page:${id}`);
     });
 
-    // Obsidian shows labels only when you zoom past a threshold so the
-    // overview stays clean. We reproduce that — labels stay invisible
-    // until the user zooms in (or hovers).
-    const LABEL_ZOOM_THRESHOLD = 0.9;
-    const applyLabelVisibility = (): void => {
-      const visible = cy.zoom() >= LABEL_ZOOM_THRESHOLD;
-      cy.batch(() => {
-        cy.nodes().forEach((n) => {
-          if (visible) n.addClass("labels-on");
-          else n.removeClass("labels-on");
-        });
-      });
-    };
-    cy.on("zoom", applyLabelVisibility);
-
-    const zoomBy = (factor: number): void => {
-      const center = {
-        x: cy.width() / 2,
-        y: cy.height() / 2,
-      };
-      cy.zoom({ level: cy.zoom() * factor, renderedPosition: center });
-    };
-    cyRef.current = { zoomBy, fit: () => cy.fit(undefined, 60) };
-
-    cy.on("tap", "node", (event) => {
-      const path = event.target.id();
-      setRoute(`page:${path}`);
-    });
-
-    // Obsidian-style hover: highlight neighbours, dim everything else.
     cy.on("mouseover", "node", (e) => {
       const n = e.target;
-      const neighbourhood = n.closedNeighborhood();
-      cy.elements().not(neighbourhood).addClass("dimmed");
-      neighbourhood.addClass("highlight");
+      const nbh = n.closedNeighborhood();
+      cy.elements().not(nbh).addClass("dimmed");
+      nbh.addClass("highlight");
+      nbh.nodes().addClass("labels-on");
     });
     cy.on("mouseout", "node", () => {
-      cy.elements().removeClass("dimmed").removeClass("highlight");
+      cy.elements().removeClass("dimmed highlight");
+      applyLabelVisibility(cy, settingsRef.current.textFadeThreshold);
     });
 
-    cy.ready(() => {
-      cy.fit(undefined, 60);
-      applyLabelVisibility();
+    cy.on("zoom", () => {
+      applyLabelVisibility(cy, settingsRef.current.textFadeThreshold);
     });
+
     return () => {
+      layoutRef.current?.stop();
+      layoutRef.current = null;
       cy.destroy();
+      cyRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // (B) Re-style when theme changes or visual options change. This is
+  // cheap — cytoscape re-applies the stylesheet without re-laying out.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.style(makeStyle(readThemeColors(), settings));
+    applyLabelVisibility(cy, settings.textFadeThreshold);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    adjacency,
-    tagFilter,
-    folderFilter,
-    currentVault?.path,
-    setRoute,
     theme,
+    settings.arrows,
+    settings.linkThickness,
+    settings.textFadeThreshold,
   ]);
 
-  const nodeCount = adjacency
-    ? new Set(
-        Object.entries(adjacency.forward).flatMap(([s, ts]) => [s, ...ts]),
-      ).size
-    : 0;
-  const edgeCount = adjacency
-    ? Object.values(adjacency.forward).reduce((s, a) => s + a.length, 0)
-    : 0;
+  // (C) Rebuild elements when the underlying graph or filter set
+  // changes, then restart the layout so the new subgraph settles.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !adjacency) return;
+    const allowed = computeAllowed(adjacency, {
+      tagFilter: settings.tagFilter,
+      folderFilter: settings.folderFilter,
+      vaultRoot: currentVault?.path ?? "",
+      search: settings.search,
+      existingOnly: settings.existingOnly,
+      showOrphans: settings.showOrphans,
+    });
+    const elements = buildElements(adjacency, allowed, settings.nodeSize);
+    cy.batch(() => {
+      cy.elements().remove();
+      cy.add(elements);
+    });
+    setCounts({ nodes: cy.nodes().length, edges: cy.edges().length });
+    if (elements.length === 0) return;
+    runLayout(cy, settings);
+    // Fit on first population AND whenever the user switches vaults —
+    // the new graph could be a completely different shape. Filter
+    // changes within the same vault leave pan/zoom alone. d3-force is
+    // asynchronous, so an immediate cy.fit() would lock onto every
+    // node still piled at (0,0); we wait long enough for the
+    // simulation to push nodes out to their resting positions before
+    // fitting, then nudge a second time once they've fully settled.
+    const currentPath = currentVault?.path ?? "";
+    if (cy.scratch("_graph.lastVaultPath") !== currentPath) {
+      const t1 = window.setTimeout(() => {
+        if (!cy.destroyed()) cy.fit(undefined, 30);
+      }, 900);
+      const t2 = window.setTimeout(() => {
+        if (!cy.destroyed()) cy.fit(undefined, 30);
+      }, 2400);
+      cy.scratch("_graph.lastVaultPath", currentPath);
+      cy.scratch("_graph.fitTimers", [t1, t2]);
+    }
+    applyLabelVisibility(cy, settings.textFadeThreshold);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    adjacency,
+    settings.tagFilter,
+    settings.folderFilter,
+    settings.search,
+    settings.existingOnly,
+    settings.showOrphans,
+    settings.nodeSize,
+    currentVault?.path,
+  ]);
+
+  // (D) Restart the d3-force simulation when any force slider changes.
+  // d3-force exposes the four Obsidian sliders natively, so this is a
+  // single re-run with the new parameter values.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || cy.elements().length === 0) return;
+    runLayout(cy, settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    settings.centerForce,
+    settings.repelForce,
+    settings.linkForce,
+    settings.linkDistance,
+  ]);
+
+  // Fetch mtimes whenever the vault changes — drives the timelapse
+  // node-insertion order (oldest file first).
+  useEffect(() => {
+    if (!currentVault?.path) return;
+    let cancelled = false;
+    ipc
+      .fileMtimes(currentVault.path)
+      .then((rows) => {
+        if (cancelled) return;
+        tlOrderRef.current = [...rows]
+          .sort((a, b) => a[1] - b[1])
+          .map((r) => r[0]);
+      })
+      .catch(() => {
+        /* mtime unavailable — timelapse just won't fire */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentVault?.path]);
+
+  // Play — Obsidian's actual time-lapse animation.
+  //
+  // Mechanism (per obsidian.md/help and forum verification):
+  //   • Sort nodes by file creation time (we use mtime as proxy).
+  //   • Start with an empty graph and an already-running simulation.
+  //   • On a fast interval, add the next node + every edge whose
+  //     other endpoint is *already in the graph*. Each insertion
+  //     gives the simulation a small kick (alpha back up to 0.5),
+  //     so the new node falls toward its hub and the existing graph
+  //     wiggles in response.
+  //   • When all nodes have been added, let the simulation cool
+  //     normally and fit the camera.
+  const startTimelapse = (): void => {
+    const cy = cyRef.current;
+    const order = tlOrderRef.current;
+    if (!cy || order.length === 0) return;
+
+    const fullEls = cy.elements().jsons() as ElementDefinition[];
+    tlFullElsRef.current = fullEls;
+
+    // Build a neighbour-set lookup from the full element list so the
+    // per-tick "does this node have an already-visible friend?" check
+    // is O(1) instead of O(edges).
+    const adj = new Map<string, Set<string>>();
+    fullEls.forEach((e) => {
+      if (!e.data?.source) return;
+      const src = e.data.source as string;
+      const tgt = e.data.target as string;
+      if (!adj.has(src)) adj.set(src, new Set());
+      if (!adj.has(tgt)) adj.set(tgt, new Set());
+      adj.get(src)!.add(tgt);
+      adj.get(tgt)!.add(src);
+    });
+    tlAdjRef.current = adj;
+    tlQueueRef.current = [...order];
+
+    const prevLayout = cy.scratch("_graph.layout") as
+      | cytoscape.Layouts
+      | undefined;
+    prevLayout?.stop();
+    cy.elements().remove();
+    runLayoutGrowing(cy, settingsRef.current);
+    setTlPlaying(true);
+
+    // 180ms per node insertion ≈ 23s for a 130-node vault, matching
+    // the slow Obsidian feel where you can clearly watch each leaf
+    // arrive and snap to its hub.
+    const stepInterval = 180;
+    tlTickRef.current = window.setInterval(() => {
+      const cyNow = cyRef.current;
+      const adjNow = tlAdjRef.current;
+      const queue = tlQueueRef.current;
+      const els = tlFullElsRef.current;
+      if (!cyNow || !adjNow || !els) return;
+
+      if (queue.length === 0) {
+        if (tlTickRef.current != null) {
+          window.clearInterval(tlTickRef.current);
+          tlTickRef.current = null;
+        }
+        runLayoutAnimated(cyNow, settingsRef.current);
+        window.setTimeout(() => {
+          if (!cyNow.destroyed()) cyNow.fit(undefined, 30);
+        }, 1500);
+        setTlPlaying(false);
+        return;
+      }
+
+      // Obsidian's "Orphans off" mode trick: prefer to insert a node
+      // that already has a visible neighbour. That way every newly
+      // appearing node visibly attaches to the growing graph instead
+      // of popping in as a lonely dot. If nothing has a neighbour yet
+      // (e.g. first insert), fall back to the head of the queue.
+      let pickIdx = -1;
+      for (let i = 0; i < queue.length; i++) {
+        const candidate = queue[i];
+        const neighbours = adjNow.get(candidate);
+        if (!neighbours) continue;
+        for (const n of neighbours) {
+          if (cyNow.getElementById(n).length > 0) {
+            pickIdx = i;
+            break;
+          }
+        }
+        if (pickIdx !== -1) break;
+      }
+      if (pickIdx === -1) pickIdx = 0;
+      const path = queue.splice(pickIdx, 1)[0];
+      const nodeJson = els.find(
+        (e) => e.data?.id === path && !e.data?.source,
+      );
+      if (!nodeJson || cyNow.getElementById(path).length > 0) return;
+
+      // Spawn near the centroid of already-visible neighbours so each
+      // new leaf appears RIGHT AT its hub and the hub-and-spoke shape
+      // builds outward visibly. Orphans without any visible neighbours
+      // (only at the very start) spawn near origin.
+      let spawnX = (Math.random() - 0.5) * 30;
+      let spawnY = (Math.random() - 0.5) * 30;
+      let nbCount = 0;
+      let avgX = 0;
+      let avgY = 0;
+      const neighbours = adjNow.get(path);
+      if (neighbours) {
+        for (const n of neighbours) {
+          const node = cyNow.getElementById(n);
+          if (node.length === 0) continue;
+          const p = node.position();
+          avgX += p.x;
+          avgY += p.y;
+          nbCount += 1;
+        }
+      }
+      if (nbCount > 0) {
+        spawnX = avgX / nbCount + (Math.random() - 0.5) * 30;
+        spawnY = avgY / nbCount + (Math.random() - 0.5) * 30;
+      }
+
+      cyNow.batch(() => {
+        cyNow.add(nodeJson);
+        const newNode = cyNow.getElementById(path);
+        newNode.position({ x: spawnX, y: spawnY });
+        newNode.scratch("d3-force", {
+          x: spawnX,
+          y: spawnY,
+          vx: 0,
+          vy: 0,
+        });
+        // Add every edge whose other endpoint is already in cy.
+        els.forEach((e) => {
+          if (!e.data?.source) return;
+          const src = e.data.source as string;
+          const tgt = e.data.target as string;
+          if (src !== path && tgt !== path) return;
+          const other = src === path ? tgt : src;
+          if (other === path) return;
+          if (
+            cyNow.getElementById(other).length > 0 &&
+            cyNow.getElementById(e.data.id as string).length === 0
+          ) {
+            cyNow.add(e);
+          }
+        });
+      });
+
+      runLayoutGrowing(cyNow, settingsRef.current);
+
+      // Refit every 4 inserts — gives the camera time to follow the
+      // expanding cluster without jumping on every single node.
+      const consumed = order.length - queue.length;
+      if (consumed % 4 === 0) {
+        cyNow.animate(
+          { fit: { eles: cyNow.elements(), padding: 40 } },
+          { duration: 220, easing: "ease-out-quad" },
+        );
+      }
+    }, stepInterval);
+  };
+
+  const pauseTimelapse = (): void => {
+    if (tlTickRef.current != null) {
+      window.clearInterval(tlTickRef.current);
+      tlTickRef.current = null;
+    }
+    const cy = cyRef.current;
+    if (cy) {
+      const layout = cy.scratch("_graph.layout") as
+        | cytoscape.Layouts
+        | undefined;
+      layout?.stop();
+    }
+    setTlPlaying(false);
+  };
+
+  // Track visible-node and edge counts as state so the toolbar reflects
+  // the *current* cytoscape state — cyRef changes don't trigger a
+  // rerender on their own.
+  const [counts, setCounts] = useState<{ nodes: number; edges: number }>({
+    nodes: 0,
+    edges: 0,
+  });
+  const nodeCount = counts.nodes;
+  const edgeCount = counts.edges;
+  const totalNodes = countAllNodes(adjacency);
 
   return (
     <div className="workspace workspace-wide">
@@ -185,145 +451,372 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
         <h1 className="page-title">{t.gr_title}</h1>
         <p className="page-lede">{t.gr_lede}</p>
       </header>
-      <div
-        className="card"
-        style={{
-          padding: 0,
-          overflow: "hidden",
-          background: "var(--bg-soft)",
-        }}
-      >
-        <div
-          className="row"
-          style={{
-            padding: "10px 14px",
-            borderBottom: "1px solid var(--line)",
-            background: "var(--bg)",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <span className="chip">
-            {nodeCount} {t.gr_node_count}
+      <div className="graph-shell">
+        <div className="graph-toolbar">
+          <span className="graph-stat">
+            {nodeCount}/{totalNodes} {t.gr_node_count}
           </span>
-          <span className="chip">
+          <span className="graph-stat">
             {edgeCount} {t.gr_edge_count}
           </span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className={`chip${tagFilter === null ? " chip-active" : ""}`}
-              style={chipBtn(tagFilter === null)}
-              onClick={() => setTagFilter(null)}
-            >
-              all tags
-            </button>
-            {tags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                style={chipBtn(tagFilter === tag)}
-                onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-              >
-                #{tag}
-              </button>
-            ))}
-          </div>
-          {folders.length > 0 ? (
-            <select
-              className="pill"
-              style={{ marginLeft: "auto" }}
-              value={folderFilter ?? ""}
-              onChange={(e) => setFolderFilter(e.target.value || null)}
-            >
-              <option value="">all folders</option>
-              {folders.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <div
-            style={{
-              display: "flex",
-              gap: 4,
-              marginLeft: folders.length > 0 ? 0 : "auto",
-            }}
+          <div className="graph-toolbar__spacer" />
+          <button
+            type="button"
+            className="graph-toolbar__btn"
+            onClick={tlPlaying ? pauseTimelapse : startTimelapse}
+            aria-pressed={tlPlaying}
+            aria-label={
+              tlPlaying
+                ? (t.gr_timelapse_pause ?? "Pause timelapse")
+                : (t.gr_timelapse_play ?? "Play timelapse")
+            }
+            title={
+              tlPlaying
+                ? (t.gr_timelapse_pause ?? "Pause timelapse")
+                : (t.gr_timelapse_play ?? "Play timelapse")
+            }
           >
-            <button
-              type="button"
-              style={chipBtn(false)}
-              onClick={() => cyRef.current?.zoomBy(0.7)}
-              aria-label="Zoom out"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              style={chipBtn(false)}
-              onClick={() => cyRef.current?.fit()}
-              aria-label="Fit"
-            >
-              fit
-            </button>
-            <button
-              type="button"
-              style={chipBtn(false)}
-              onClick={() => cyRef.current?.zoomBy(1.4)}
-              aria-label="Zoom in"
-            >
-              +
-            </button>
-          </div>
+            {tlPlaying ? (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <rect x="2" y="2" width="3" height="8" />
+                <rect x="7" y="2" width="3" height="8" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M3 2 L10 6 L3 10 Z" />
+              </svg>
+            )}
+          </button>
+          <ZoomButtons cyRef={cyRef} />
+          <button
+            type="button"
+            className="graph-toolbar__btn"
+            onClick={() => setDrawerOpen((v) => !v)}
+            aria-pressed={drawerOpen}
+            aria-label={t.gr_settings ?? "Graph settings"}
+            title={t.gr_settings ?? "Graph settings"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle
+                cx="12"
+                cy="12"
+                r="3"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </div>
-        {nodeCount === 0 ? (
-          <p className="muted" style={{ padding: 40, textAlign: "center" }}>
-            No wikilinks found in the vault yet. Add some{" "}
-            <code style={{ fontFamily: "var(--font-mono)" }}>
-              [[wikilinks]]
-            </code>{" "}
-            to see the graph grow.
-          </p>
-        ) : (
-          <div
-            ref={containerRef}
-            style={{
-              height: "calc(100vh - 280px)",
-              minHeight: 520,
-              width: "100%",
-              background: "var(--bg)",
-            }}
+        <div className="graph-body">
+          <div className="graph-canvas-wrap">
+            {/* Cytoscape lives in this div for the page's entire lifetime.
+                Conditionally toggling `visibility` breaks cytoscape's
+                container measurement, so we keep it visible and put the
+                empty-state overlay on top instead. */}
+            <div ref={containerRef} className="graph-canvas" />
+            {totalNodes === 0 ? (
+              <p className="muted graph-empty">
+                {t.gr_empty_pre ??
+                  "No wikilinks found in the vault yet. Add some "}
+                <code style={{ fontFamily: "var(--font-mono)" }}>
+                  [[wikilinks]]
+                </code>
+                {t.gr_empty_post ?? " to see the graph grow."}
+              </p>
+            ) : null}
+          </div>
+          <GraphControls
+            t={t}
+            open={drawerOpen}
+            onToggle={() => setDrawerOpen((v) => !v)}
+            settings={settings}
+            onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
+            onReset={() =>
+              setSettings({ ...DEFAULT_GRAPH_SETTINGS, search: "" })
+            }
+            tags={tags}
+            folders={folders}
           />
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
-function chipBtn(active: boolean): React.CSSProperties {
-  return {
-    fontSize: 11.5,
-    padding: "2px 8px",
-    borderRadius: 3,
-    background: active ? "var(--ink)" : "var(--bg-soft)",
-    color: active ? "var(--bg)" : "var(--ink-3)",
-    border: "1px solid var(--line)",
-    cursor: "pointer",
+function ZoomButtons({
+  cyRef,
+}: {
+  cyRef: React.MutableRefObject<Core | null>;
+}): JSX.Element {
+  const zoomBy = (factor: number): void => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const center = { x: cy.width() / 2, y: cy.height() / 2 };
+    cy.zoom({ level: cy.zoom() * factor, renderedPosition: center });
   };
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      <button
+        type="button"
+        className="graph-toolbar__btn"
+        onClick={() => zoomBy(0.7)}
+        aria-label="Zoom out"
+      >
+        −
+      </button>
+      <button
+        type="button"
+        className="graph-toolbar__btn"
+        onClick={() => cyRef.current?.fit(undefined, 30)}
+        aria-label="Fit"
+      >
+        fit
+      </button>
+      <button
+        type="button"
+        className="graph-toolbar__btn"
+        onClick={() => zoomBy(1.4)}
+        aria-label="Zoom in"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+// Obsidian's UI sliders aren't d3-force values directly — its
+// centerStrength slider goes through a log mapping (the famous
+// `1 - log(0.109)/log(0.01) ≈ 0.5187` default is the *slider* value
+// for an internal strength of 0.109). Replicate the inverse so our
+// slider of 0.518 produces the same on-screen behaviour as Obsidian's
+// 0.518 slider. The other three sliders map linearly to d3-force.
+function obsidianCenterStrength(slider: number): number {
+  // slider ∈ [0,1] → internal ∈ [0.01, 1] along a log curve.
+  // At slider=0, internal=0.01 (almost no pull).
+  // At slider=0.518, internal≈0.109 (Obsidian's default feel).
+  // At slider=1, internal=1 (rigid lock to origin).
+  return Math.pow(0.01, 1 - slider);
+}
+
+function runLayout(cy: Core, settings: GraphSettings): void {
+  // Obsidian-fidelity d3-force layout. Mapping confirmed against:
+  //   - github.com/your-papa/obsidian-Smart2Brain (chargeStrength = -repelStrength)
+  //   - github.com/ElsaTam/obsidian-extended-graph (typed defaults)
+  //
+  //   centerForce   → forceX/forceY strength, via obsidianCenterStrength
+  //   repelForce    → manyBodyStrength (negated, linear)
+  //   linkForce     → linkStrength (linear)
+  //   linkDistance  → linkDistance (pixels, linear)
+  //
+  // The "dandelion" silhouette emerges naturally when
+  // linkDistance ≫ repelStrength: hubs hold leaves at a fixed radius,
+  // weak inter-cluster repulsion lets each hub float in its own
+  // pocket. No special seeding, no boundingBox, no collide hack — the
+  // ratio is the whole trick.
+  const centerStrength = obsidianCenterStrength(settings.centerForce);
+  const layoutOpts = {
+    name: "d3-force",
+    animate: true,
+    fit: false,
+    // Obsidian halts its rAF loop after 60 idle frames — running
+    // forever creates the visible jitter that Obsidian doesn't have.
+    // alphaDecay 0.025 (d3 default) settles in ~300 ticks (~5s).
+    infinite: false,
+    alphaDecay: 0.025,
+    alphaMin: 0.001,
+    ungrabifyWhileSimulating: false,
+    fixedAfterDragging: false,
+    randomize: false,
+    padding: 30,
+
+    velocityDecay: 0.4, // d3-force default
+    linkId: (d: { id: string }) => d.id,
+    linkDistance: settings.linkDistance,
+    linkStrength: settings.linkForce,
+    linkIterations: 1,
+    manyBodyStrength: -settings.repelForce,
+    manyBodyTheta: 0.9,
+    manyBodyDistanceMin: 1,
+    // Uncapped distance is what d3-force is calibrated for; the
+    // wide-radius behaviour is also what gives Obsidian its airy
+    // clusters. Earlier caps were a band-aid for a mis-scaled
+    // manyBodyStrength.
+    manyBodyDistanceMax: Infinity,
+    xStrength: centerStrength,
+    xX: 0,
+    yStrength: centerStrength,
+    yY: 0,
+    // cytoscape-d3-force flattens each cytoscape node into a d3
+    // simulation node (scratch position + node.data() spread on top),
+    // so we read `size` directly off the parameter, not via .data().
+    // Generous personal-space ring around each node so even
+    // 25-leaf dandelions never have leaves touching. The +6 pad is
+    // what stops adjacent petals from visually fusing.
+    collideRadius: (n: { size?: number }) => (Number(n.size) || 6) / 2 + 6,
+    collideStrength: 0.85,
+    collideIterations: 1,
+  } as unknown as LayoutOptions;
+
+  // Stop any in-flight simulation before kicking off a new one.
+  cy.stop();
+  const prev =
+    (cy.scratch("_graph.layout") as cytoscape.Layouts | undefined) ?? null;
+  prev?.stop();
+  const layout = cy.layout(layoutOpts);
+  cy.scratch("_graph.layout", layout);
+  layout.run();
+}
+
+// Same as runLayout but with a slower alpha decay so the form-up
+// animation is visible to the eye instead of converging in a frame.
+// Used by the play button to mirror Obsidian's initial-load motion.
+function runLayoutAnimated(
+  cy: Core,
+  settings: GraphSettings,
+): cytoscape.Layouts {
+  const centerStrength = obsidianCenterStrength(settings.centerForce);
+  const layoutOpts = {
+    name: "d3-force",
+    animate: true,
+    fit: false,
+    infinite: false,
+    // Very slow decay + heavy friction → cinematic ~12s formation.
+    // velocityDecay 0.7 (vs d3 default 0.4) is the main knob here:
+    // it cuts node momentum each tick, so they drift toward their
+    // hubs at a watchable speed instead of snapping in 200ms.
+    alpha: 1,
+    alphaDecay: 0.0065,
+    alphaMin: 0.001,
+    ungrabifyWhileSimulating: false,
+    fixedAfterDragging: false,
+    randomize: false,
+    padding: 30,
+
+    velocityDecay: 0.7,
+    linkId: (d: { id: string }) => d.id,
+    linkDistance: settings.linkDistance,
+    linkStrength: settings.linkForce,
+    linkIterations: 1,
+    manyBodyStrength: -settings.repelForce,
+    manyBodyTheta: 0.9,
+    manyBodyDistanceMin: 1,
+    manyBodyDistanceMax: Infinity,
+    xStrength: centerStrength,
+    xX: 0,
+    yStrength: centerStrength,
+    yY: 0,
+    collideRadius: (n: { size?: number }) => (Number(n.size) || 6) / 2 + 6,
+    collideStrength: 0.85,
+    collideIterations: 1,
+  } as unknown as LayoutOptions;
+
+  cy.stop();
+  const prev =
+    (cy.scratch("_graph.layout") as cytoscape.Layouts | undefined) ?? null;
+  prev?.stop();
+  const layout = cy.layout(layoutOpts);
+  cy.scratch("_graph.layout", layout);
+  layout.run();
+  return layout;
+}
+
+// Variant used during the per-node-insert animation. Very low alpha
+// gives each insertion just enough kick to integrate the new node
+// without shaking the already-placed graph. High friction (0.75)
+// further damps motion so existing nodes barely flinch.
+function runLayoutGrowing(cy: Core, settings: GraphSettings): cytoscape.Layouts {
+  const centerStrength = obsidianCenterStrength(settings.centerForce);
+  const layoutOpts = {
+    name: "d3-force",
+    animate: true,
+    fit: false,
+    infinite: false,
+    alpha: 0.2,
+    alphaDecay: 0.04,
+    alphaMin: 0.001,
+    ungrabifyWhileSimulating: false,
+    fixedAfterDragging: false,
+    randomize: false,
+    padding: 30,
+    velocityDecay: 0.75,
+    linkId: (d: { id: string }) => d.id,
+    linkDistance: settings.linkDistance,
+    linkStrength: settings.linkForce,
+    linkIterations: 1,
+    manyBodyStrength: -settings.repelForce,
+    manyBodyTheta: 0.9,
+    manyBodyDistanceMin: 1,
+    manyBodyDistanceMax: Infinity,
+    xStrength: centerStrength,
+    xX: 0,
+    yStrength: centerStrength,
+    yY: 0,
+    collideRadius: (n: { size?: number }) => (Number(n.size) || 6) / 2 + 6,
+    collideStrength: 0.85,
+    collideIterations: 1,
+  } as unknown as LayoutOptions;
+
+  cy.stop();
+  const prev =
+    (cy.scratch("_graph.layout") as cytoscape.Layouts | undefined) ?? null;
+  prev?.stop();
+  const layout = cy.layout(layoutOpts);
+  cy.scratch("_graph.layout", layout);
+  layout.run();
+  return layout;
+}
+
+function applyLabelVisibility(cy: Core, threshold: number): void {
+  // Three-tier label visibility, matching how Obsidian feels at
+  // different zoom levels:
+  //   • zoom < hubThreshold       → only hovered labels (handled
+  //                                  separately via .highlight class)
+  //   • hubThreshold ≤ zoom < full → only hubs (degree ≥ 4) show
+  //   • zoom ≥ full                → everything shows
+  // The hubThreshold is half the user-configured fade level — gives
+  // a smooth reveal as you zoom in.
+  const zoom = cy.zoom();
+  const showAll = zoom >= threshold;
+  const showHubs = zoom >= threshold * 0.5;
+  cy.batch(() => {
+    cy.nodes().forEach((n) => {
+      if (n.hasClass("highlight")) {
+        n.addClass("labels-on");
+        return;
+      }
+      const deg = Number(n.data("deg") ?? 0);
+      if (showAll || (showHubs && deg >= 4)) n.addClass("labels-on");
+      else n.removeClass("labels-on");
+    });
+  });
 }
 
 interface AllowFilterOpts {
   tagFilter: string | null;
   folderFilter: string | null;
   vaultRoot: string;
+  search: string;
+  existingOnly: boolean;
+  showOrphans: boolean;
 }
 
 function computeAllowed(
-  adjacency: NonNullable<
-    ReturnType<typeof useVaultStore.getState>["adjacency"]
-  >,
-  { tagFilter, folderFilter, vaultRoot }: AllowFilterOpts,
+  adjacency: Adjacency,
+  {
+    tagFilter,
+    folderFilter,
+    vaultRoot,
+    search,
+    existingOnly,
+    showOrphans,
+  }: AllowFilterOpts,
 ): Set<string> {
   const all = new Set<string>();
   for (const p of Object.keys(adjacency.forward)) all.add(p);
@@ -331,33 +824,46 @@ function computeAllowed(
     for (const p of targets) all.add(p);
   }
   for (const p of Object.keys(adjacency.tags)) all.add(p);
-  return new Set(
-    Array.from(all).filter((p) => {
-      if (tagFilter && !(adjacency.tags[p] ?? []).includes(tagFilter)) {
-        return false;
-      }
-      if (folderFilter && !inFolder(vaultRoot, p, folderFilter)) {
-        return false;
-      }
-      return true;
-    }),
-  );
+
+  const resolved = new Set(Object.keys(adjacency.forward));
+  const needle = search.trim().toLowerCase();
+
+  // First pass: apply filters that don't depend on the surviving
+  // subgraph (tag, folder, search, existingOnly).
+  const candidates = new Set<string>();
+  for (const p of all) {
+    if (tagFilter && !(adjacency.tags[p] ?? []).includes(tagFilter)) continue;
+    if (folderFilter && !inFolder(vaultRoot, p, folderFilter)) continue;
+    if (existingOnly && !resolved.has(p)) continue;
+    if (needle && !stem(p).toLowerCase().includes(needle)) continue;
+    candidates.add(p);
+  }
+
+  if (showOrphans) return candidates;
+
+  // Second pass: drop nodes with no edges into the surviving subgraph.
+  const degree = new Map<string, number>();
+  for (const [s, ts] of Object.entries(adjacency.forward)) {
+    if (!candidates.has(s)) continue;
+    for (const t of ts) {
+      if (!candidates.has(t)) continue;
+      degree.set(s, (degree.get(s) ?? 0) + 1);
+      degree.set(t, (degree.get(t) ?? 0) + 1);
+    }
+  }
+  return new Set([...candidates].filter((p) => (degree.get(p) ?? 0) > 0));
 }
 
 function buildElements(
-  adjacency: NonNullable<
-    ReturnType<typeof useVaultStore.getState>["adjacency"]
-  >,
+  adjacency: Adjacency,
   allowed: Set<string>,
+  sizeMultiplier: number,
 ): ElementDefinition[] {
   const nodes = new Set<string>();
   const edges: ElementDefinition[] = [];
   const degree = new Map<string, number>();
-  // A node is "resolved" if it appears as a source of any outgoing
-  // edge (= we crawled it as a real file). Targets that only appear
-  // as wikilink destinations and never as sources are unresolved
-  // stubs (Obsidian-style ghost nodes).
   const resolved = new Set<string>(Object.keys(adjacency.forward));
+
   for (const [source, targets] of Object.entries(adjacency.forward)) {
     if (!allowed.has(source)) continue;
     nodes.add(source);
@@ -371,18 +877,24 @@ function buildElements(
       });
     }
   }
+
+  // Allow allowed-but-isolated nodes through (showOrphans = true).
+  for (const p of allowed) nodes.add(p);
+
   return [
     ...Array.from(nodes).map((p) => {
       const deg = degree.get(p) ?? 0;
-      // Obsidian-style sizing: dramatic range so hubs visually
-      // dominate the way they do in the reference screenshot.
-      // Leaves are tiny (6px), big hubs grow up to ~60px.
-      const size = Math.max(6, Math.min(60, 6 + Math.sqrt(deg) * 7));
+      // Obsidian-style sizing: leaves are small dots (~4px), hubs
+      // swell up to ~22px. Wide hub/leaf ratio is what makes the
+      // dandelion silhouette pop — leaves recede into the periphery
+      // while the hub anchors each cluster.
+      const base = Math.max(4, Math.min(22, 4 + Math.sqrt(deg) * 3.2));
       return {
         data: {
           id: p,
           label: stem(p),
-          size,
+          deg,
+          size: base * sizeMultiplier,
           unresolved: resolved.has(p) ? 0 : 1,
         },
         classes: resolved.has(p) ? "resolved" : "unresolved",
@@ -400,13 +912,7 @@ function collectTags(map: Record<string, string[]>): string[] {
   return Array.from(set).sort();
 }
 
-function collectFolders(
-  root: string,
-  adjacency: {
-    forward: Record<string, string[]>;
-    tags: Record<string, string[]>;
-  } | null,
-): string[] {
+function collectFolders(root: string, adjacency: Adjacency | null): string[] {
   if (!adjacency || !root) return [];
   const trimmed = root.replace(/[\\/]+$/, "");
   const set = new Set<string>();
@@ -438,7 +944,22 @@ function stem(path: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
-function makeStyle(c: ThemeColors): StylesheetCSS[] {
+function countAllNodes(adjacency: Adjacency | null): number {
+  if (!adjacency) return 0;
+  const set = new Set<string>();
+  for (const p of Object.keys(adjacency.forward)) set.add(p);
+  for (const arr of Object.values(adjacency.forward)) {
+    for (const p of arr) set.add(p);
+  }
+  for (const p of Object.keys(adjacency.tags)) set.add(p);
+  return set.size;
+}
+
+function makeStyle(c: ThemeColors, s: GraphSettings): StylesheetCSS[] {
+  // Obsidian's edges are hair-thin (~0.5px). 0.4 base × thickness
+  // slider so even at high-DPR displays they read as fine lines, not
+  // wires.
+  const edgeWidth = 0.4 * s.linkThickness;
   return [
     {
       selector: "node",
@@ -446,23 +967,25 @@ function makeStyle(c: ThemeColors): StylesheetCSS[] {
         "background-color": c.node,
         label: "data(label)",
         color: c.ink,
-        "font-size": 10,
+        // Obsidian uses no text outline at all — labels are plain
+        // grey text floating over the dark background. 6px sits in
+        // the same readable-but-cheap range as Obsidian's rendered
+        // PIXI.Text at default zoom.
+        "font-size": 6,
         "font-weight": 400,
         "text-valign": "bottom",
         "text-halign": "center",
-        "text-margin-y": 4,
-        "text-outline-width": 1.5,
-        "text-outline-color": c.bg,
-        "text-outline-opacity": 1,
+        "text-margin-y": 3,
+        "text-outline-width": 0,
+        "text-outline-opacity": 0,
         "text-wrap": "ellipsis",
-        "text-max-width": "140px",
-        // Hide labels by default — zoom listener flips this on/off so
-        // a zoomed-out view stays clean like Obsidian's.
+        "text-max-width": "120px",
         "text-opacity": 0,
         width: "data(size)",
         height: "data(size)",
         "border-width": 0,
-        "transition-property": "opacity, text-opacity, border-width",
+        "transition-property":
+          "opacity, text-opacity, border-width, background-color",
         "transition-duration": 120,
       },
     },
@@ -477,9 +1000,15 @@ function makeStyle(c: ThemeColors): StylesheetCSS[] {
       selector: "edge",
       css: {
         "line-color": c.edge,
-        "curve-style": "haystack",
+        // Always haystack — straight pixel-thin lines, Obsidian style.
+        // Bezier curves with arrows make the visual look more like a
+        // workflow diagram than a knowledge graph.
+        "curve-style": s.arrows ? "bezier" : "haystack",
         "haystack-radius": 0,
-        width: 0.6,
+        width: edgeWidth,
+        "target-arrow-shape": s.arrows ? "triangle" : "none",
+        "target-arrow-color": c.edge,
+        "arrow-scale": 0.6,
         "transition-property": "line-color, opacity, width",
         "transition-duration": 120,
       },
@@ -497,13 +1026,19 @@ function makeStyle(c: ThemeColors): StylesheetCSS[] {
       selector: "edge.highlight",
       css: {
         "line-color": c.edgeHi,
-        width: 1.2,
+        "target-arrow-color": c.edgeHi,
+        // Triple the width on hover — combined with the jump from 6%
+        // to 95% opacity it makes the neighbourhood "snap into focus".
+        width: Math.max(edgeWidth * 3, 1.3),
       },
     },
     {
       selector: ".dimmed",
       css: {
-        opacity: 0.15,
+        // Obsidian dims non-neighbour nodes to ~25%, not all the way
+        // down — keeps the rest of the graph as gentle context
+        // instead of erasing it.
+        opacity: 0.25,
       },
     },
     {
@@ -517,6 +1052,14 @@ function makeStyle(c: ThemeColors): StylesheetCSS[] {
     {
       selector: "node.labels-on",
       css: {
+        "text-opacity": 1,
+      },
+    },
+    {
+      selector: "node:grabbed",
+      css: {
+        "border-width": 2,
+        "border-color": c.accent,
         "text-opacity": 1,
       },
     },

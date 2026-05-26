@@ -106,6 +106,8 @@ export const ipc = {
   openVault: (path: string) => invoke<VaultMeta>("open_vault", { path }),
   ensureDefaultVault: () => invoke<string>("ensure_default_vault"),
   listFiles: (root: string) => invoke<FileNode[]>("list_files", { root }),
+  fileMtimes: (root: string) =>
+    invoke<[string, number][]>("file_mtimes", { root }),
   readFile: (path: string) => invoke<FileContent>("read_file", { path }),
   writeFile: (path: string, content: string) =>
     invoke<null>("write_file", { path, content }),

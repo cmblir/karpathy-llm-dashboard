@@ -357,6 +357,42 @@ pub fn list_files(root: &str) -> Result<Vec<FileNode>, String> {
     walk_dir(&root_path).map_err(|e| format!("walk failed: {e}"))
 }
 
+/// Flat (path, mtime_unix_seconds) list for every .md file under root.
+/// Drives the graph timelapse — nodes are revealed in mtime order.
+pub fn file_mtimes(root: &str) -> Result<Vec<(String, i64)>, String> {
+    let root_path = Path::new(root)
+        .canonicalize()
+        .map_err(|e| format!("canonicalize failed for {root}: {e}"))?;
+    if !root_path.is_dir() {
+        return Err(format!("not a directory: {root}"));
+    }
+    let mut out = Vec::new();
+    collect_mtimes(&root_path, &mut out).map_err(|e| format!("walk failed: {e}"))?;
+    Ok(out)
+}
+
+fn collect_mtimes(dir: &Path, out: &mut Vec<(String, i64)>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        if is_hidden(&entry.file_name()) {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            collect_mtimes(&path, out)?;
+        } else if is_markdown(&path) {
+            let mtime = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            out.push((path.to_string_lossy().into_owned(), mtime));
+        }
+    }
+    Ok(())
+}
+
 fn walk_dir(dir: &Path) -> std::io::Result<Vec<FileNode>> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)?
         .filter_map(|e| e.ok())
