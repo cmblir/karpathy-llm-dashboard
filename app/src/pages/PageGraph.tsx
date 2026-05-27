@@ -701,7 +701,7 @@ function ZoomButtons({
 // of a single hairball; smaller vaults still look natural because the
 // scaling is multiplicative.
 const REPEL_SCALE = 100; // slider 10 → manyBodyStrength −1000
-const CENTER_SCALE = 0.1; // slider 0.5 → xStrength 0.05
+const CENTER_SCALE = 1; // slider 0.75 → xStrength 0.75 (strong gravity)
 
 interface D3Node {
   id: string;
@@ -763,7 +763,7 @@ function buildForceOpts(settings: GraphSettings): Record<string, unknown> {
     // collision radius is what gives Obsidian its even spacing — nodes
     // (including orphans) settle into a roughly uniform minimum gap
     // instead of clumping. 2 iterations make the constraint hold.
-    collideRadius: (n: D3Node) => (Number(n.size) || 6) / 2 + 10,
+    collideRadius: (n: D3Node) => (Number(n.size) || 6) / 2 + 6,
     collideStrength: 1,
     collideIterations: 2,
   };
