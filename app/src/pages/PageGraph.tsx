@@ -191,7 +191,9 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     });
     setCounts({ nodes: cy.nodes().length, edges: cy.edges().length });
     if (elements.length === 0) return;
-    runLayout(cy, settings);
+    // Fresh elements were just added → every node is at 0,0. Pass
+    // randomize:true so the first run scatters them before settling.
+    runLayout(cy, settings, true);
     // Fit on first population AND whenever the user switches vaults —
     // the new graph could be a completely different shape. Filter
     // changes within the same vault leave pan/zoom alone. d3-force is
@@ -657,7 +659,16 @@ function buildForceOpts(settings: GraphSettings): Record<string, unknown> {
     infinite: false,
     ungrabifyWhileSimulating: false,
     fixedAfterDragging: false,
-    randomize: true,
+    // cytoscape-d3-force re-seeds EVERY node's position on each
+    // layout.run() — with randomize:true it scatters them all to fresh
+    // random spots in the viewport. That's only wanted for the very
+    // first layout of a freshly-added graph (otherwise all nodes pile
+    // at 0,0 and the sim explodes). For re-runs — force-slider tweaks,
+    // and especially the timelapse which re-runs every insert — it must
+    // be false, or the accumulated layout is wiped out on every tick
+    // and the graph reads as a tangled web of long crossing edges.
+    // Callers opt in via runLayout(cy, settings, /*randomize*/ true).
+    randomize: false,
     padding: 30,
     linkId: (d: { id: string }) => d.id,
     linkDistance: settings.linkDistance,
@@ -700,11 +711,16 @@ function runLayoutWith(
   return layout;
 }
 
-function runLayout(cy: Core, settings: GraphSettings): void {
+// `randomize` should be true ONLY when the graph was just (re)built and
+// every node is sitting at 0,0 — that's the one case where we need
+// cytoscape-d3-force to scatter them before the sim runs. A re-run on an
+// already-laid-out graph (slider tweak) passes false to preserve it.
+function runLayout(cy: Core, settings: GraphSettings, randomize = false): void {
   // d3-force default alphaDecay 0.0228 settles in ~300 ticks; we slow
   // it slightly so dense graphs have enough cooling time to find the
   // dandelion configuration before the simulation freezes.
   runLayoutWith(cy, settings, {
+    randomize,
     alpha: 1,
     alphaDecay: 0.018,
     alphaMin: 0.001,
@@ -715,7 +731,9 @@ function runLayout(cy: Core, settings: GraphSettings): void {
 // Cinematic form-up for the timelapse "play" button — same forces,
 // just slower decay so the eye can follow each node falling into
 // place. velocityDecay 0.65 cuts momentum each tick so leaves drift
-// toward their hub at a watchable speed.
+// toward their hub at a watchable speed. randomize stays false: by the
+// time this runs the timelapse has placed every node, and re-scattering
+// would throw the finished graph back into chaos.
 function runLayoutAnimated(
   cy: Core,
   settings: GraphSettings,
