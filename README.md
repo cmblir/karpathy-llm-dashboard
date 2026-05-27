@@ -125,15 +125,19 @@ A chat surface that answers questions about your wiki. The active **query model*
 
 ### Graph
 
-Full vault link graph via Cytoscape.js with the **d3-force** layout — the exact same force family Obsidian uses (`forceLink` + `forceManyBody` + `forceX/Y`). The simulation is **continuous** — drag a node and its neighbours follow; release and the cluster settles back. Nodes are files, edges are `[[wikilinks]]`. Hubs grow with link count, unresolved wikilink targets render as ghost nodes, labels fade in past a zoom threshold.
+Full vault link graph via Cytoscape.js with the **d3-force** layout — the same force family Obsidian uses (`forceLink` + `forceManyBody` + `forceX/Y` + collision). Nodes are files, edges are `[[wikilinks]]`; hubs grow with link count. **Every note is shown, including link-less ones** — strong centre gravity packs the orphans in among the clusters so the whole thing settles into one dense, even disk rather than a hairball with a halo.
 
-A right-side settings drawer (gear icon) mirrors Obsidian's panel exactly:
+The layout runs once and then rests (no idle CPU). **Drag a node and the simulation re-heats** — its neighbours follow and, on release, it springs back to its resting place, just like Obsidian. Idle stays physics-free, so it's light enough for large vaults.
+
+A right-side settings drawer (gear icon) mirrors Obsidian's panel:
 
 - **Filters** — live search by filename, tag chips, folder dropdown, toggles for *Show orphans* and *Existing files only*.
-- **Display** — *Arrows* (direction on each link), *Text fade threshold*, *Node size*, *Link thickness*.
-- **Forces** — *Center force* (xStrength / yStrength), *Repel force* (manyBodyStrength), *Link force* (linkStrength), *Link distance*. Each slider drives a real d3-force parameter, so the running simulation reacts identically to Obsidian's panel.
+- **Display** — *Arrows*, *Text fade threshold*, *Node size*, *Link thickness*, and a **▶ Play timelapse** button.
+- **Forces** — *Center force*, *Repel force*, *Link force*, *Link distance*. Each slider drives a real d3-force parameter.
 
-Hover any node to spotlight its 1-hop neighbourhood (the rest dims to 12 %). Click to open the file. Zoom and pan are smooth (mouse wheel + drag-background); a small toolbar offers zoom-in / fit / zoom-out plus a **▶ Timelapse** button that reveals nodes oldest-to-newest by file mtime — watch the vault grow at the speed it actually grew. Drawer state and every slider position persist to localStorage.
+**Timelapse** (toolbar ▶ or the drawer button) reveals notes oldest-to-newest by file mtime at their settled positions — edges appear as each note connects up, so you watch the graph build itself in the order you actually wrote it. It's a pure reveal (no physics), so it stays smooth on any vault size, and the camera holds steady on the whole graph.
+
+Hover any node to spotlight its 1-hop neighbourhood (the rest dims). Click to open the file. Zoom and pan are smooth (mouse wheel + drag-background); the toolbar offers zoom-in / fit / zoom-out. Drawer state and every slider position persist to localStorage.
 
 ### History
 
