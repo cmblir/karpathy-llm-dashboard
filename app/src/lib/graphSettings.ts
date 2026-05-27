@@ -47,18 +47,16 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   textFadeThreshold: 1.1,
   nodeSize: 1,
   linkThickness: 1,
-  centerForce: 0.5, // → internal 0.05 (Obsidian's default)
-  repelForce: 10, // → internal -1000 (Obsidian's default)
+  centerForce: 0.3, // → internal 0.03 — weak pull, lets clusters breathe
+  repelForce: 15, // → internal -1500 — strong spread, Obsidian-airy
   linkForce: 1, // → ÷ sqrt(min-degree) per link
-  linkDistance: 90, // pixels — short, lets leaves sit close to hubs
+  linkDistance: 160, // pixels — longer edges, more open layout
 };
 
-// v12: reset persisted slider values. Some users had dragged
-// linkThickness down to 0.3 and textFadeThreshold to 0.45 under v11,
-// which made edges sub-pixel-thin (invisible) and is indistinguishable
-// from "the graph is broken". Bumping the key restores the legible
-// defaults; the user can re-tune from there.
-const KEY = "memex.graph.settings.v12";
+// v13: airier Obsidian-matched defaults (stronger repel, longer links,
+// weaker center) + fainter edges. Bumping resets persisted slider
+// values so everyone gets the new look on first load.
+const KEY = "memex.graph.settings.v13";
 
 export function loadGraphSettings(): GraphSettings {
   try {

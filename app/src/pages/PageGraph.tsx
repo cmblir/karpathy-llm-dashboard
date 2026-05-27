@@ -75,12 +75,11 @@ function readThemeColors(): ThemeColors {
     ink: cs.getPropertyValue("--ink").trim() || (dark ? "#e6e8eb" : "#111418"),
     node: dark ? "#c8c8c8" : "#3a3f47",
     nodeUnresolved: dark ? "#6e7079" : "#9aa0a8",
-    // Resting edges are quiet but must stay legible — 0.06 was so faint
-    // the links vanished entirely on small/sparse graphs, making nodes
-    // look disconnected. 0.28 (dark) / 0.20 (light) keeps the Obsidian
-    // "gentle web" feel while the structure is actually visible without
-    // hovering. Hover still snaps the neighbourhood to full strength.
-    edge: dark ? "rgba(220, 224, 230, 0.28)" : "rgba(30, 35, 45, 0.20)",
+    // Faint hairline web like Obsidian — traceable but it whispers,
+    // never shouts. 0.28 read as harsh solid wires; 0.13 (dark) / 0.10
+    // (light) is the "gentle web" weight. Hover still snaps the
+    // neighbourhood to full strength below.
+    edge: dark ? "rgba(220, 224, 230, 0.13)" : "rgba(30, 35, 45, 0.10)",
     edgeHi: dark ? "rgba(220, 224, 230, 0.95)" : "rgba(30, 35, 45, 0.85)",
     accent:
       cs.getPropertyValue("--accent").trim() || (dark ? "#7aa7ff" : "#3b82f6"),
@@ -729,7 +728,7 @@ function buildForceOpts(settings: GraphSettings): Record<string, unknown> {
     // each other once they're already comfortably apart. Without a cap
     // every node fights every other forever and the simulation never
     // reaches a stable resting state on dense graphs.
-    manyBodyDistanceMax: 800,
+    manyBodyDistanceMax: 1200,
     xStrength: Math.max(0.005, settings.centerForce * CENTER_SCALE),
     xX: 0,
     yStrength: Math.max(0.005, settings.centerForce * CENTER_SCALE),
@@ -997,10 +996,9 @@ function countAllNodes(adjacency: Adjacency | null): number {
 }
 
 function makeStyle(c: ThemeColors, s: GraphSettings): StylesheetCSS[] {
-  // Fine lines, but thick enough to actually see. 0.8 base × thickness
-  // slider reads as a clean hairline; the 0.5px floor keeps edges
-  // visible even if the user drags the thickness slider to its minimum.
-  const edgeWidth = Math.max(0.5, 0.8 * s.linkThickness);
+  // Obsidian-thin hairlines. 0.55 base × thickness slider; 0.4px floor
+  // keeps edges from disappearing entirely at the slider's minimum.
+  const edgeWidth = Math.max(0.4, 0.55 * s.linkThickness);
   return [
     {
       selector: "node",
