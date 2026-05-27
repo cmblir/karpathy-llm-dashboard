@@ -75,11 +75,10 @@ function readThemeColors(): ThemeColors {
     ink: cs.getPropertyValue("--ink").trim() || (dark ? "#e6e8eb" : "#111418"),
     node: dark ? "#c8c8c8" : "#3a3f47",
     nodeUnresolved: dark ? "#6e7079" : "#9aa0a8",
-    // Faint hairline web like Obsidian — traceable but it whispers,
-    // never shouts. 0.28 read as harsh solid wires; 0.13 (dark) / 0.10
-    // (light) is the "gentle web" weight. Hover still snaps the
-    // neighbourhood to full strength below.
-    edge: dark ? "rgba(220, 224, 230, 0.13)" : "rgba(30, 35, 45, 0.10)",
+    // Hairline web like Obsidian — visible enough to read the
+    // connections, quiet enough not to shout. 0.18 (dark) / 0.14 (light).
+    // Hover still snaps the neighbourhood to full strength below.
+    edge: dark ? "rgba(220, 224, 230, 0.18)" : "rgba(30, 35, 45, 0.14)",
     edgeHi: dark ? "rgba(220, 224, 230, 0.95)" : "rgba(30, 35, 45, 0.85)",
     accent:
       cs.getPropertyValue("--accent").trim() || (dark ? "#7aa7ff" : "#3b82f6"),
@@ -174,6 +173,18 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
 
     cy.on("zoom", () => {
       applyLabelVisibility(cy, settingsRef.current.textFadeThreshold);
+    });
+
+    // Obsidian-style drag: the layout settles then stops, so by default a
+    // dragged node just sits where you drop it — dead. Re-heat the
+    // simulation when a node is grabbed so dragging pulls its neighbours
+    // along and, on release, the forces spring it back to its resting
+    // place. cytoscape-d3-force itself wires up the grab/drag/free
+    // handling once a layout is running again; idle stays physics-free
+    // (cheap on mobile). Skip while the timelapse reveal is playing.
+    cy.on("grab", "node", () => {
+      if (tlRafRef.current != null) return;
+      reheatLayout(cy, settingsRef.current);
     });
 
     // Re-read the theme after mount. This effect runs before the app's
@@ -680,6 +691,21 @@ function runLayout(
     alphaDecay: 0.018,
     alphaMin: 0.001,
     velocityDecay: 0.45,
+  });
+}
+
+// Re-heat the simulation for an interactive drag. A gentle alpha (0.3)
+// re-activates the forces from the CURRENT positions (randomize:false),
+// so the grabbed node tows its neighbours and everything springs back to
+// rest when released, then the sim cools and stops on its own (~150
+// ticks) — no idle CPU.
+function reheatLayout(cy: Core, settings: GraphSettings): cytoscape.Layouts {
+  return runLayoutWith(cy, settings, {
+    randomize: false,
+    alpha: 0.3,
+    alphaDecay: 0.02,
+    alphaMin: 0.001,
+    velocityDecay: 0.4,
   });
 }
 

@@ -47,18 +47,17 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   textFadeThreshold: 1.1,
   nodeSize: 1,
   linkThickness: 1,
-  centerForce: 0.75, // → internal 0.75 — strong gravity packs a tight disk
-  repelForce: 10, // → internal -1000 — splays leaves without flinging
+  centerForce: 0.95, // → internal 0.95 — very strong gravity, tight disk
+  repelForce: 9, // → internal -900 — splays leaves without flinging
   linkForce: 1, // → ÷ sqrt(min-degree) per link
-  linkDistance: 35, // pixels — tight dandelions, dense uniform packing
+  linkDistance: 30, // pixels — tight dandelions, dense uniform packing
 };
 
-// v16: dense, uniform Obsidian-style disk. Strong centre gravity pulls
-// EVERY node (connected clusters AND link-less orphans) into one tight
-// disk where collision sets a uniform minimum gap — so orphans fill the
-// spaces between dandelions instead of being flung to an outer ring.
-// Bumping resets persisted slider values.
-const KEY = "memex.graph.settings.v16";
+// v17: stronger gravity still, which compresses link-less orphans into
+// the disk with the clusters instead of letting them settle into faint
+// concentric shells (the leftover "ring" artifact). Bumping resets
+// persisted slider values.
+const KEY = "memex.graph.settings.v17";
 
 export function loadGraphSettings(): GraphSettings {
   try {
