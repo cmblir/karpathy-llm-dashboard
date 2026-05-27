@@ -49,11 +49,12 @@ function readThemeColors(): ThemeColors {
     ink: cs.getPropertyValue("--ink").trim() || (dark ? "#e6e8eb" : "#111418"),
     node: dark ? "#c8c8c8" : "#3a3f47",
     nodeUnresolved: dark ? "#6e7079" : "#9aa0a8",
-    // Edges almost invisible by default — like Obsidian's graph. The
-    // structure reads through node positioning; the lines just whisper
-    // in the background until the user hovers a node, at which point
-    // the highlighted edges snap to full strength below.
-    edge: dark ? "rgba(220, 224, 230, 0.06)" : "rgba(30, 35, 45, 0.06)",
+    // Resting edges are quiet but must stay legible — 0.06 was so faint
+    // the links vanished entirely on small/sparse graphs, making nodes
+    // look disconnected. 0.28 (dark) / 0.20 (light) keeps the Obsidian
+    // "gentle web" feel while the structure is actually visible without
+    // hovering. Hover still snaps the neighbourhood to full strength.
+    edge: dark ? "rgba(220, 224, 230, 0.28)" : "rgba(30, 35, 45, 0.20)",
     edgeHi: dark ? "rgba(220, 224, 230, 0.95)" : "rgba(30, 35, 45, 0.85)",
     accent:
       cs.getPropertyValue("--accent").trim() || (dark ? "#7aa7ff" : "#3b82f6"),
@@ -193,24 +194,27 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     if (elements.length === 0) return;
     // Fresh elements were just added → every node is at 0,0. Pass
     // randomize:true so the first run scatters them before settling.
-    runLayout(cy, settings, true);
-    // Fit on first population AND whenever the user switches vaults —
-    // the new graph could be a completely different shape. Filter
-    // changes within the same vault leave pan/zoom alone. d3-force is
-    // asynchronous, so an immediate cy.fit() would lock onto every
-    // node still piled at (0,0); we wait long enough for the
-    // simulation to push nodes out to their resting positions before
-    // fitting, then nudge a second time once they've fully settled.
+    const layout = runLayout(cy, settings, true);
+    // Frame the graph once it has actually SETTLED. The old code fit at
+    // fixed 900/2400ms timers — both fire mid-simulation (it runs ~6s),
+    // so the camera locked onto a half-spread graph and the final
+    // resting layout drifted out of frame, leaving a sparse, off-centre
+    // mess. An early fit keeps something on screen during the settle;
+    // the layoutstop fit nails the final framing.
     const currentPath = currentVault?.path ?? "";
     if (cy.scratch("_graph.lastVaultPath") !== currentPath) {
-      const t1 = window.setTimeout(() => {
-        if (!cy.destroyed()) cy.fit(undefined, 30);
-      }, 900);
-      const t2 = window.setTimeout(() => {
-        if (!cy.destroyed()) cy.fit(undefined, 30);
-      }, 2400);
+      const early = window.setTimeout(() => {
+        if (!cy.destroyed()) cy.fit(undefined, 40);
+      }, 700);
+      const onStop = (): void => {
+        if (!cy.destroyed()) {
+          cy.fit(undefined, 40);
+          applyLabelVisibility(cy, settingsRef.current.textFadeThreshold);
+        }
+      };
+      layout.one("layoutstop", onStop);
       cy.scratch("_graph.lastVaultPath", currentPath);
-      cy.scratch("_graph.fitTimers", [t1, t2]);
+      cy.scratch("_graph.fitTimers", [early]);
     }
     applyLabelVisibility(cy, settings.textFadeThreshold);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -715,11 +719,15 @@ function runLayoutWith(
 // every node is sitting at 0,0 — that's the one case where we need
 // cytoscape-d3-force to scatter them before the sim runs. A re-run on an
 // already-laid-out graph (slider tweak) passes false to preserve it.
-function runLayout(cy: Core, settings: GraphSettings, randomize = false): void {
+function runLayout(
+  cy: Core,
+  settings: GraphSettings,
+  randomize = false,
+): cytoscape.Layouts {
   // d3-force default alphaDecay 0.0228 settles in ~300 ticks; we slow
   // it slightly so dense graphs have enough cooling time to find the
   // dandelion configuration before the simulation freezes.
-  runLayoutWith(cy, settings, {
+  return runLayoutWith(cy, settings, {
     randomize,
     alpha: 1,
     alphaDecay: 0.018,
@@ -766,12 +774,13 @@ function applyLabelVisibility(cy: Core, threshold: number): void {
   // different zoom levels:
   //   • zoom < hubThreshold       → only hovered labels (handled
   //                                  separately via .highlight class)
-  //   • hubThreshold ≤ zoom < full → only hubs (degree ≥ 4) show
+  //   • hubThreshold ≤ zoom < full → only hubs (degree ≥ 2) show
   //   • zoom ≥ full                → everything shows
-  // The hubThreshold is half the user-configured fade level — gives
-  // a smooth reveal as you zoom in.
+  // Small graphs (≤ 80 nodes) always show every label — there's room,
+  // and hiding them on a 21-node vault just looked broken.
   const zoom = cy.zoom();
-  const showAll = zoom >= threshold;
+  const smallGraph = cy.nodes().length <= 80;
+  const showAll = smallGraph || zoom >= threshold;
   const showHubs = zoom >= threshold * 0.5;
   cy.batch(() => {
     cy.nodes().forEach((n) => {
@@ -780,7 +789,7 @@ function applyLabelVisibility(cy: Core, threshold: number): void {
         return;
       }
       const deg = Number(n.data("deg") ?? 0);
-      if (showAll || (showHubs && deg >= 4)) n.addClass("labels-on");
+      if (showAll || (showHubs && deg >= 2)) n.addClass("labels-on");
       else n.removeClass("labels-on");
     });
   });
@@ -944,10 +953,9 @@ function countAllNodes(adjacency: Adjacency | null): number {
 }
 
 function makeStyle(c: ThemeColors, s: GraphSettings): StylesheetCSS[] {
-  // Obsidian's edges are hair-thin (~0.5px). 0.4 base × thickness
-  // slider so even at high-DPR displays they read as fine lines, not
-  // wires.
-  const edgeWidth = 0.4 * s.linkThickness;
+  // Fine lines, but thick enough to actually see. 0.4 was sub-pixel at
+  // typical zoom; 0.8 base × thickness slider reads as a clean hairline.
+  const edgeWidth = 0.8 * s.linkThickness;
   return [
     {
       selector: "node",
@@ -955,11 +963,9 @@ function makeStyle(c: ThemeColors, s: GraphSettings): StylesheetCSS[] {
         "background-color": c.node,
         label: "data(label)",
         color: c.ink,
-        // Obsidian uses no text outline at all — labels are plain
-        // grey text floating over the dark background. 6px sits in
-        // the same readable-but-cheap range as Obsidian's rendered
-        // PIXI.Text at default zoom.
-        "font-size": 6,
+        // 6px was unreadable at any sane fit zoom; 11px is the smallest
+        // that stays legible once the camera zooms out to frame the graph.
+        "font-size": 11,
         "font-weight": 400,
         "text-valign": "bottom",
         "text-halign": "center",
