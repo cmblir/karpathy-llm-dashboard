@@ -3,7 +3,47 @@
 // semantics, but emits a graphology Graph instead of cytoscape elements so
 // sigma.js can render it.
 import Graph from "graphology";
+import louvain from "graphology-communities-louvain";
 import type { Adjacency, FileNode } from "./ipc";
+
+// Cosmic palette — soft-bright hues on black so each connected community reads
+// as its own coloured star cluster / nebula region within the galaxy.
+const PALETTE = [
+  "#6fb3ff",
+  "#b58cff",
+  "#5fe0c0",
+  "#ff9ec4",
+  "#ffd27a",
+  "#8affc1",
+  "#ff9e6d",
+  "#9ab0ff",
+  "#7fe1ff",
+  "#c9a0ff",
+  "#ffb38a",
+  "#a0ffd6",
+];
+
+// Colour nodes by connected community (Louvain): each community of 3+ nodes
+// gets a distinct palette hue; orphans and tiny groups stay dim field stars.
+function colorByCommunity(graph: VaultGraph, dim: string): void {
+  let comm: Record<string, number>;
+  try {
+    comm = louvain(graph) as Record<string, number>;
+  } catch {
+    return; // empty/edgeless graph — leave dim
+  }
+  const size = new Map<number, number>();
+  for (const id in comm) size.set(comm[id], (size.get(comm[id]) ?? 0) + 1);
+  const ranked = [...size.entries()]
+    .filter(([, n]) => n >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .map(([c]) => c);
+  const colorOf = new Map<number, string>();
+  ranked.forEach((c, i) => colorOf.set(c, PALETTE[i % PALETTE.length]));
+  graph.forEachNode((id) => {
+    graph.setNodeAttribute(id, "color", colorOf.get(comm[id]) ?? dim);
+  });
+}
 
 export interface AllowFilterOpts {
   tagFilter: string | null;
@@ -124,10 +164,14 @@ export function computeAllowed(
 
 export interface BuildGraphOpts {
   nodeSize: number; // GraphSettings.nodeSize multiplier
-  resolvedColor: string;
-  unresolvedColor: string;
+  // Star brightness tiers — hubs are bright stars, leaves mid, orphans/ghosts
+  // dim, giving the galaxy depth.
+  starBright: string;
+  starMid: string;
+  starDim: string;
   edgeColor: string; // rgba w/ alpha — sigma honors it
 }
+
 
 // Deterministic pseudo-random scatter for seed positions. Math.random is
 // unavailable in some sandboxed contexts and would make runs non-reproducible,
@@ -180,9 +224,9 @@ export function buildGraph(
       x,
       y,
       deg: 0,
-      size: 2, // real size set once degree is known
+      size: 2, // real size + colour set once degree is known
       unresolved: resolved.has(id) ? 0 : 1,
-      color: resolved.has(id) ? o.resolvedColor : o.unresolvedColor,
+      color: o.starDim,
     });
   };
 
@@ -201,13 +245,15 @@ export function buildGraph(
   }
   for (const p of allowed) ensure(p); // isolated/orphan nodes
 
-  // Degree-driven size: leaves ~2px, hubs swell. sqrt keeps hubs from
-  // dominating; the wide hub/leaf ratio gives the dandelion silhouette.
+  // Small dots, Obsidian-scale: orphans/leaves ~2–3px, hubs grow with
+  // sqrt(degree) capped ~8px so big hubs read clearly without giant blobs.
   g.forEachNode((id) => {
     const deg = g.degree(id);
-    const base = Math.max(2, Math.min(14, 2 + Math.sqrt(deg) * 2.2));
+    const base = Math.max(1.5, Math.min(8, 1.5 + Math.sqrt(deg) * 1.1));
     g.setNodeAttribute(id, "deg", deg);
     g.setNodeAttribute(id, "size", base * o.nodeSize);
   });
+  // Colour each connected community its own hue.
+  colorByCommunity(g, o.starDim);
   return g;
 }

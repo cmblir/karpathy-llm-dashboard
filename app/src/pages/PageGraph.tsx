@@ -9,10 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import Sigma from "sigma";
-import {
-  fitViewportToNodes,
-  getCameraStateToFitViewportToNodes,
-} from "@sigma/utils";
+import { fitViewportToNodes } from "@sigma/utils";
 import GraphControls from "../components/GraphControls";
 import {
   DEFAULT_GRAPH_SETTINGS,
@@ -116,8 +113,9 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     });
     const graph: VaultGraph = buildGraph(adjacency, allowed, allFiles, {
       nodeSize: s.nodeSize,
-      resolvedColor: theme.node,
-      unresolvedColor: theme.nodeUnresolved,
+      starBright: theme.starBright,
+      starMid: theme.starMid,
+      starDim: theme.starDim,
       edgeColor: theme.edge,
     });
     setCounts({ nodes: graph.order, edges: graph.size });
@@ -137,7 +135,12 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
       cv.addEventListener("webglcontextrestored", onCtxRestored);
     }
 
-    renderer.on("clickNode", ({ node }) => setRoute(`page:${node}`));
+    // Only a precise click (no drag movement) opens the page — dragging a node
+    // must not navigate.
+    let dragMoved = false;
+    renderer.on("clickNode", ({ node }) => {
+      if (!dragMoved) setRoute(`page:${node}`);
+    });
 
     // Hover: brighten the hovered node's closed neighbourhood, dim the rest —
     // Obsidian dims non-neighbours rather than erasing them, so context stays.
@@ -156,19 +159,25 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     });
     renderer.setSetting("nodeReducer", (n, data) => {
       if (!hoveredNeighbors) return data;
-      if (hoveredNeighbors.has(n)) {
-        return n === hoveredNode
-          ? { ...data, highlighted: true, forceLabel: true, zIndex: 1 }
-          : { ...data, forceLabel: true, zIndex: 1 };
+      // Only the hovered node shows a label — forcing every neighbour's label
+      // stacked them into an unreadable garble. Neighbours stay bright; the
+      // rest dim.
+      if (n === hoveredNode) {
+        // forceLabel only — NOT `highlighted`, which draws the white hover box
+        // + ring. User wants just the label text.
+        return { ...data, forceLabel: true, zIndex: 2 };
       }
-      return { ...data, color: theme.nodeUnresolved, label: "" };
+      if (hoveredNeighbors.has(n)) return { ...data, label: "", zIndex: 1 };
+      return { ...data, color: theme.starDim, label: "", zIndex: 0 };
     });
+    // Faint edges by default (Obsidian hairlines). On hover, the hovered star's
+    // links glow and the rest are hidden so its neighbourhood pops.
     renderer.setSetting("edgeReducer", (e, data) => {
       if (!hoveredNode) return data;
       const [a, b] = graph.extremities(e);
       return a === hoveredNode || b === hoveredNode
         ? { ...data, color: theme.edgeHi, zIndex: 1 }
-        : data;
+        : { ...data, hidden: true };
     });
 
     // Node drag — Obsidian-style: pin the grabbed node (d3 fx/fy) and re-heat
@@ -178,6 +187,7 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     let draggedSim: SimNode | undefined;
     renderer.on("downNode", ({ node }) => {
       draggedNode = node;
+      dragMoved = false;
       draggedSim = simRef.current?.nodes.find((n) => n.id === node);
       if (!renderer.getCustomBBox()) renderer.setCustomBBox(renderer.getBBox());
       if (draggedSim) {
@@ -188,6 +198,7 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     });
     renderer.on("moveBody", ({ event }) => {
       if (!draggedNode) return;
+      dragMoved = true;
       const p = renderer.viewportToGraph(event);
       graph.mergeNodeAttributes(draggedNode, { x: p.x, y: p.y });
       if (draggedSim) {
@@ -211,18 +222,9 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     renderer.on("upNode", endDrag);
     renderer.on("upStage", endDrag);
 
-    // Camera framing: keep the spreading disk in view during the settle, then
-    // nail the final framing on the sim's "end". A user wheel/drag hands the
-    // camera over so the settle never fights manual pan/zoom.
+    // A user wheel/drag hands the camera over so neither the tracking fit nor
+    // the final fit fights manual pan/zoom.
     let userTookOver = false;
-    const fitNow = (): void => {
-      if (renderer.getGraph().order < 2) return;
-      const state = getCameraStateToFitViewportToNodes(
-        renderer,
-        renderer.getGraph().nodes(),
-      );
-      renderer.getCamera().setState(state);
-    };
     const takeOver = (): void => {
       userTookOver = true;
     };
@@ -237,29 +239,38 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     });
     simRef.current = sim;
 
-    const fitTimer = window.setInterval(() => {
-      if (!userTookOver) fitNow();
-    }, 300);
-    // First frame: reveal once a few ticks have spread the seed ring.
-    const revealTimer = window.setTimeout(() => {
-      container.classList.add("graph-ready");
-    }, 250);
-    sim.sim.on("end", () => {
-      window.clearInterval(fitTimer);
-      if (killed) return;
-      if (!userTookOver && renderer.getGraph().order >= 2) {
-        void fitViewportToNodes(renderer, renderer.getGraph().nodes(), {
-          animate: true,
+    // Reveal early and track the layout with the camera as it settles, so the
+    // user watches it come alive (interactive from the first frame), then nail
+    // the final framing on settle.
+    const fit = (): void => {
+      if (!userTookOver && graph.order >= 2) {
+        void fitViewportToNodes(renderer, robustSubset(graph, graph.nodes()), {
+          animate: false,
         });
       }
-      renderer.refresh(); // re-grid labels at final positions
+    };
+    const fitTimer = window.setInterval(fit, 400);
+    const revealTimer = window.setTimeout(() => {
+      if (!killed) container.classList.add("graph-ready");
+    }, 300);
+    const finalFit = (): void => {
+      window.clearInterval(fitTimer);
+      if (killed) return;
+      fit();
+      renderer.refresh();
       container.classList.add("graph-ready");
+    };
+    const revealSafety = window.setTimeout(finalFit, 12000);
+    sim.sim.on("end", () => {
+      window.clearTimeout(revealSafety);
+      finalFit();
     });
 
     return () => {
       killed = true;
       window.clearInterval(fitTimer);
       window.clearTimeout(revealTimer);
+      window.clearTimeout(revealSafety);
       container.removeEventListener("wheel", takeOver);
       container.removeEventListener("pointerdown", takeOver);
       for (const cv of canvases) {
@@ -317,16 +328,9 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
       const r = sigmaRef.current;
       if (!r) return;
       const theme = readTheme();
+      // Only restyle labels/settings — node colours are the community palette
+      // (theme-independent) and edges are hidden, so don't overwrite them.
       r.setSettings(buildSigmaSettings(theme, settingsRef.current));
-      const graph = r.getGraph();
-      graph.forEachNode((n, a) =>
-        graph.setNodeAttribute(
-          n,
-          "color",
-          a.unresolved ? theme.nodeUnresolved : theme.node,
-        ),
-      );
-      graph.forEachEdge((e) => graph.setEdgeAttribute(e, "color", theme.edge));
       r.refresh();
     };
     const raf = requestAnimationFrame(apply);
@@ -493,6 +497,37 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   );
 }
 
+// The inner `pct` of the given nodes by distance from their centroid. Framing
+// to this (not every node) keeps the dense dandelion field filling the view
+// instead of a few far-flung disconnected components / orphans shrinking it.
+function robustSubset(
+  graph: VaultGraph,
+  ids: string[],
+  pct = 0.9,
+): string[] {
+  if (ids.length < 12) return ids;
+  let cx = 0;
+  let cy = 0;
+  for (const id of ids) {
+    cx += graph.getNodeAttribute(id, "x");
+    cy += graph.getNodeAttribute(id, "y");
+  }
+  cx /= ids.length;
+  cy /= ids.length;
+  const byDist = ids
+    .map((id) => ({
+      id,
+      d: Math.hypot(
+        graph.getNodeAttribute(id, "x") - cx,
+        graph.getNodeAttribute(id, "y") - cy,
+      ),
+    }))
+    .sort((a, b) => a.d - b.d);
+  return byDist.slice(0, Math.max(12, Math.floor(byDist.length * pct))).map(
+    (n) => n.id,
+  );
+}
+
 function ZoomButtons({
   sigmaRef,
 }: {
@@ -505,7 +540,8 @@ function ZoomButtons({
   const fit = (): void => {
     const r = sigmaRef.current;
     if (r && r.getGraph().order >= 2) {
-      void fitViewportToNodes(r, r.getGraph().nodes(), { animate: true });
+      const g = r.getGraph() as VaultGraph;
+      void fitViewportToNodes(r, robustSubset(g, g.nodes()), { animate: true });
     }
   };
   return (

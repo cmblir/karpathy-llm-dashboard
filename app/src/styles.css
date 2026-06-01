@@ -1232,7 +1232,21 @@ hr {
 .graph-canvas-wrap {
   flex: 1;
   position: relative;
-  background: var(--bg);
+  /* Deep-space backdrop: a faint nebula glow at the galactic core and a soft
+     vignette darkening the edges, so the star field reads as a galaxy. The
+     sigma canvas above is transparent, so this shows through. */
+  background:
+    radial-gradient(
+      ellipse 70% 70% at 50% 45%,
+      rgba(120, 150, 220, 0.06),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 45%,
+      rgba(0, 0, 0, 0.45) 100%
+    ),
+    var(--bg);
 }
 .graph-canvas {
   position: absolute;

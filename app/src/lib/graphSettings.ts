@@ -51,17 +51,19 @@ export const DEFAULT_GRAPH_SETTINGS: GraphSettings = {
   // centerStrength ≈0.52, repelStrength 10, linkStrength 1, linkDistance 250.
   // linkDistance 250 (NOT 30, which is Obsidian's slider MINIMUM) is what
   // separates the dandelions instead of collapsing them onto a central spine.
-  centerForce: 0.5, // → internal xStrength/yStrength ≈0.075 (gentle gravity)
-  repelForce: 10, // → internal manyBodyStrength -300, uncapped (Barnes-Hut)
+  centerForce: 0.5, // → x/y strength ≈0.04 (gentle, uniform gravity)
+  repelForce: 10, // → per-node charge -13×(deg+1): hubs separate, leaves pack
   linkForce: 1, // → ÷ (1+min-degree) per link (d3 native normalisation)
-  linkDistance: 250, // pixels — Obsidian default; long links spread clusters
+  // SHORT links — leaves hug their hub into a dense full circle (Obsidian),
+  // not a sparse far-flung arc. Cluster separation comes from hub repulsion.
+  linkDistance: 40,
 };
 
 // v17: stronger gravity still, which compresses link-less orphans into
 // the disk with the clusters instead of letting them settle into faint
 // concentric shells (the leftover "ring" artifact). Bumping resets
 // persisted slider values.
-const KEY = "memex.graph.settings.v18";
+const KEY = "memex.graph.settings.v20";
 
 export function loadGraphSettings(): GraphSettings {
   try {

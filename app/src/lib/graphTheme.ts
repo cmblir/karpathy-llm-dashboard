@@ -7,6 +7,14 @@ export interface GraphTheme {
   bg: string;
   node: string;
   nodeUnresolved: string;
+  // Star brightness tiers for the galaxy: bright hubs → dim field stars.
+  starBright: string;
+  starMid: string;
+  starDim: string;
+  // Galaxy radius tiers: warm glowing core → blue-white arms → dim halo.
+  gxCore: string;
+  gxArm: string;
+  gxHalo: string;
   ink: string;
   edge: string; // rgba w/ alpha — sigma honours the alpha channel (unlike cytoscape WebGL)
   edgeHi: string;
@@ -44,9 +52,16 @@ export function readTheme(): GraphTheme {
     ink: cs.getPropertyValue("--ink").trim() || (dark ? "#e6e8eb" : "#111418"),
     node: dark ? "#c8c8c8" : "#3a3f47",
     nodeUnresolved: dark ? "#6e7079" : "#9aa0a8",
-    // Faint hairline edges, Obsidian-style. Alpha is honoured by sigma.
-    edge: dark ? "rgba(220,224,230,0.18)" : "rgba(30,35,45,0.14)",
-    edgeHi: dark ? "rgba(220,224,230,0.95)" : "rgba(30,35,45,0.85)",
+    starBright: dark ? "#eef1f6" : "#1b1f27",
+    starMid: dark ? "#9aa0ab" : "#4c525c",
+    starDim: dark ? "#565b64" : "#9aa0a8",
+    gxCore: dark ? "#ffe9c4" : "#7a5a1f",
+    gxArm: dark ? "#cdd7f0" : "#3a4664",
+    gxHalo: dark ? "#5d6c92" : "#8a93ac",
+    // Cosmic-web filaments: very faint, so the weave reads as a soft glow
+    // rather than tangled wires. Alpha is honoured by sigma.
+    edge: dark ? "rgba(170,185,215,0.10)" : "rgba(40,50,70,0.10)",
+    edgeHi: dark ? "rgba(190,205,240,0.9)" : "rgba(30,40,60,0.8)",
     accent:
       cs.getPropertyValue("--accent").trim() || (dark ? "#7aa7ff" : "#3b82f6"),
   };
@@ -68,19 +83,19 @@ export function buildSigmaSettings(
     // edges — faint straight hairlines
     defaultEdgeColor: theme.edge,
     defaultEdgeType: s.arrows ? "arrow" : "line",
-    minEdgeThickness: 0.4,
+    minEdgeThickness: 0.25,
     enableEdgeEvents: false,
     // labels — Obsidian-style hub-first zoom reveal
     renderLabels: true,
     labelColor: { color: theme.ink },
-    labelDensity: 0.6,
-    labelGridCellSize: 130,
+    labelDensity: 0.5,
+    labelGridCellSize: 140,
     labelRenderedSizeThreshold: Math.max(
       1,
-      8 + (s.textFadeThreshold - 1.1) * 8,
+      5 + (s.textFadeThreshold - 1.1) * 6,
     ),
     labelFont: sansFont,
-    labelSize: 12,
+    labelSize: 11,
     // nodes
     defaultNodeColor: theme.node,
     zIndex: true,

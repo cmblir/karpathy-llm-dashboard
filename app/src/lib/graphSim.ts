@@ -31,11 +31,10 @@ interface SimLink {
   target: SimNode | string;
 }
 
-const REPEL_SCALE = 20; // slider 10 → manyBody -200 (uncapped, Barnes-Hut)
-// slider 0.5 → x/y strength ≈0.075 — the gentle gravity the design intends.
-// (The cytoscape port used 0.4 here = 0.2, which over-compressed the graph
-// into a uniform disk; this lets clusters drift into separated dandelions.)
-const CENTER_SCALE = 0.15;
+// Galaxy: uniform per-node repulsion + uniform gravity gives one cohesive disk
+// with a dense core that fades to a sparse star halo (not separated clusters).
+const REPEL_SCALE = 9; // slider 10 → charge -90 (uncapped, Barnes-Hut)
+const CENTER_SCALE = 0.13; // slider 0.5 → x/y strength ≈0.065 (clusters spread, stay cohesive)
 
 export interface GraphSim {
   nodes: SimNode[];
@@ -53,6 +52,8 @@ export function createSim(
   onTick: (nodes: SimNode[]) => void,
 ): GraphSim {
   let cur = s;
+  // ALL nodes take part — orphans included — so everything settles into one
+  // cohesive "galaxy": a dense core fading to a sparse halo of field stars.
   const nodes: SimNode[] = graph.mapNodes((id, a) => ({
     id,
     x: a.x,
@@ -83,9 +84,9 @@ export function createSim(
     .strength(linkStrength)
     .iterations(1);
   const chargeF = forceManyBody<SimNode>()
-    .strength(-s.repelForce * REPEL_SCALE)
+    .strength(() => -cur.repelForce * REPEL_SCALE)
     .theta(0.9)
-    .distanceMin(1); // distanceMax left at Infinity (uncapped) — no orphan ring
+    .distanceMin(2); // distanceMax left at Infinity (uncapped)
   const xF = forceX<SimNode>(0).strength(centerOf(s));
   const yF = forceY<SimNode>(0).strength(centerOf(s));
 
@@ -96,14 +97,14 @@ export function createSim(
     .force("y", yF)
     .force(
       "collide",
-      forceCollide<SimNode>((n) => n.size / 2 + 6)
-        .strength(1)
+      forceCollide<SimNode>((n) => n.size / 2 + 1.5)
+        .strength(0.9)
         .iterations(1),
     )
     .alpha(1)
-    .alphaDecay(0.035)
-    .alphaMin(0.004)
-    .velocityDecay(0.5);
+    .alphaDecay(0.018)
+    .alphaMin(0.002)
+    .velocityDecay(0.45);
 
   sim.on("tick", () => onTick(nodes));
 
@@ -117,7 +118,7 @@ export function createSim(
     update(next) {
       cur = next;
       linkF.distance(next.linkDistance).strength(linkStrength);
-      chargeF.strength(-next.repelForce * REPEL_SCALE);
+      chargeF.strength(() => -next.repelForce * REPEL_SCALE);
       xF.strength(centerOf(next));
       yF.strength(centerOf(next));
       sim.alpha(0.3).alphaTarget(0).restart();
