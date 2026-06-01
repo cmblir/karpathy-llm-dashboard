@@ -29,7 +29,7 @@ import {
   flattenMarkdown,
   type VaultGraph,
 } from "../lib/graphData";
-import { createSim, type GraphSim } from "../lib/graphSim";
+import { createSim, type GraphSim, type SimNode } from "../lib/graphSim";
 import { readTheme, buildSigmaSettings } from "../lib/graphTheme";
 import type { Strings } from "../lib/i18n";
 import { useUIStore } from "../stores/uiStore";
@@ -155,6 +155,46 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
         ? { ...data, color: theme.edgeHi, zIndex: 1 }
         : data;
     });
+
+    // Node drag — Obsidian-style: pin the grabbed node (d3 fx/fy) and re-heat
+    // the sim so its neighbours follow, then release so it springs to rest.
+    // setCustomBBox freezes the camera so it doesn't pan while dragging.
+    let draggedNode: string | null = null;
+    let draggedSim: SimNode | undefined;
+    renderer.on("downNode", ({ node }) => {
+      draggedNode = node;
+      draggedSim = simRef.current?.nodes.find((n) => n.id === node);
+      if (!renderer.getCustomBBox()) renderer.setCustomBBox(renderer.getBBox());
+      if (draggedSim) {
+        draggedSim.fx = draggedSim.x;
+        draggedSim.fy = draggedSim.y;
+      }
+      simRef.current?.reheat(0.3);
+    });
+    renderer.on("moveBody", ({ event }) => {
+      if (!draggedNode) return;
+      const p = renderer.viewportToGraph(event);
+      graph.mergeNodeAttributes(draggedNode, { x: p.x, y: p.y });
+      if (draggedSim) {
+        draggedSim.fx = p.x;
+        draggedSim.fy = p.y;
+      }
+      event.preventSigmaDefault();
+      event.original.preventDefault();
+      event.original.stopPropagation();
+    });
+    const endDrag = (): void => {
+      if (draggedSim) {
+        draggedSim.fx = null;
+        draggedSim.fy = null;
+      }
+      draggedNode = null;
+      draggedSim = undefined;
+      renderer.setCustomBBox(null);
+      simRef.current?.sim.alphaTarget(0);
+    };
+    renderer.on("upNode", endDrag);
+    renderer.on("upStage", endDrag);
 
     // Camera framing: keep the spreading disk in view during the settle, then
     // nail the final framing on the sim's "end". A user wheel/drag hands the
