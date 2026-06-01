@@ -245,11 +245,12 @@ export function buildGraph(
   }
   for (const p of allowed) ensure(p); // isolated/orphan nodes
 
-  // Small dots, Obsidian-scale: orphans/leaves ~2–3px, hubs grow with
-  // sqrt(degree) capped ~8px so big hubs read clearly without giant blobs.
+  // Tiny star cores: leaves/orphans ~1px, hubs grow with sqrt(degree) capped
+  // ~5px. The glow node program wraps each in a soft halo, so the cores stay
+  // small and point-like while still reading as stars.
   g.forEachNode((id) => {
     const deg = g.degree(id);
-    const base = Math.max(1.5, Math.min(8, 1.5 + Math.sqrt(deg) * 1.1));
+    const base = Math.max(1, Math.min(5, 1 + Math.sqrt(deg) * 0.7));
     g.setNodeAttribute(id, "deg", deg);
     g.setNodeAttribute(id, "size", base * o.nodeSize);
   });

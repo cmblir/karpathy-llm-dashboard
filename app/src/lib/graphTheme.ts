@@ -1,7 +1,9 @@
 // Graph theme colours (read from the live CSS variables / rendered background)
 // and the sigma Settings derived from theme + the user's display sliders.
 import type { Settings } from "sigma/settings";
+import { drawDiscNodeLabel } from "sigma/rendering";
 import type { GraphSettings } from "./graphSettings";
+import NodeGlowProgram from "./graphNodeGlow";
 
 export interface GraphTheme {
   bg: string;
@@ -96,8 +98,24 @@ export function buildSigmaSettings(
     ),
     labelFont: sansFont,
     labelSize: 11,
-    // nodes
+    // Hover draws the label TEXT ONLY — reuse the plain label renderer instead
+    // of sigma's default node-hover, which fills a white rounded box behind it.
+    defaultDrawNodeHover: drawDiscNodeLabel,
+    // nodes — glowing stars (small bright core + soft halo). The glow PROGRAM
+    // itself is registered only at construction (see NODE_PROGRAM_SETTINGS);
+    // re-sending it through setSettings on a live renderer blanks the graph.
     defaultNodeColor: theme.node,
     zIndex: true,
+  };
+}
+
+// Program classes belong ONLY in the initial Sigma constructor. buildSigmaSettings
+// is also re-applied via setSettings on every slider/theme change, and re-sending
+// nodeProgramClasses there re-instantiates the WebGL program and renders every
+// node blank — so these settings live apart and are spread in once, at build time.
+export function nodeProgramSettings(): Partial<Settings> {
+  return {
+    defaultNodeType: "glow",
+    nodeProgramClasses: { glow: NodeGlowProgram },
   };
 }

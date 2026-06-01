@@ -27,7 +27,11 @@ import {
   type VaultGraph,
 } from "../lib/graphData";
 import { createSim, type GraphSim, type SimNode } from "../lib/graphSim";
-import { readTheme, buildSigmaSettings } from "../lib/graphTheme";
+import {
+  readTheme,
+  buildSigmaSettings,
+  nodeProgramSettings,
+} from "../lib/graphTheme";
 import type { Strings } from "../lib/i18n";
 import { useUIStore } from "../stores/uiStore";
 import { useVaultStore } from "../stores/vaultStore";
@@ -45,6 +49,8 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   const simRef = useRef<GraphSim | null>(null);
   const settingsRef = useRef<GraphSettings>(DEFAULT_GRAPH_SETTINGS);
   const tlRafRef = useRef<number | null>(null);
+  // Markdown paths sorted oldest→newest by mtime — the order nodes pop in
+  // during the timelapse.
   const tlOrderRef = useRef<string[]>([]);
 
   const [settings, setSettings] = useState<GraphSettings>(() =>
@@ -74,7 +80,8 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   // free-floating "orphan" dots.
   const allFiles = useMemo(() => flattenMarkdown(fileTree), [fileTree]);
 
-  // Fetch mtimes whenever the vault changes — drives the timelapse reveal order.
+  // Fetch mtimes whenever the vault changes — drives the timelapse reveal order
+  // (oldest file first, so the graph grows in creation order).
   useEffect(() => {
     if (!currentVault?.path) return;
     let cancelled = false;
@@ -121,7 +128,11 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     setCounts({ nodes: graph.order, edges: graph.size });
     if (graph.order === 0) return;
 
-    const renderer = new Sigma(graph, container, buildSigmaSettings(theme, s));
+    const renderer = new Sigma(graph, container, {
+      ...buildSigmaSettings(theme, s),
+      // Glow program registered here ONLY — never via the setSettings updates.
+      ...nodeProgramSettings(),
+    });
     sigmaRef.current = renderer;
 
     // WKWebView drops the WebGL context when backgrounded / under memory
@@ -146,16 +157,30 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     // Obsidian dims non-neighbours rather than erasing them, so context stays.
     let hoveredNode: string | undefined;
     let hoveredNeighbors: Set<string> | undefined;
-    renderer.on("enterNode", ({ node }) => {
+    // Drag state declared up here so the hover handlers can defer to it: while a
+    // node is dragged the highlight stays locked to it. The cursor slides off
+    // the node's disc during the drag, which would otherwise fire leaveNode (or
+    // enterNode on a node passed over) and drop / reassign the dimming.
+    let draggedNode: string | null = null;
+    let draggedSim: SimNode | undefined;
+    const highlight = (node: string): void => {
       hoveredNode = node;
       hoveredNeighbors = new Set(graph.neighbors(node));
       hoveredNeighbors.add(node);
       renderer.refresh({ skipIndexation: true });
-    });
-    renderer.on("leaveNode", () => {
+    };
+    const clearHighlight = (): void => {
       hoveredNode = undefined;
       hoveredNeighbors = undefined;
       renderer.refresh({ skipIndexation: true });
+    };
+    renderer.on("enterNode", ({ node }) => {
+      if (draggedNode) return;
+      highlight(node);
+    });
+    renderer.on("leaveNode", () => {
+      if (draggedNode) return;
+      clearHighlight();
     });
     renderer.setSetting("nodeReducer", (n, data) => {
       if (!hoveredNeighbors) return data;
@@ -183,12 +208,14 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     // Node drag — Obsidian-style: pin the grabbed node (d3 fx/fy) and re-heat
     // the sim so its neighbours follow, then release so it springs to rest.
     // setCustomBBox freezes the camera so it doesn't pan while dragging.
-    let draggedNode: string | null = null;
-    let draggedSim: SimNode | undefined;
     renderer.on("downNode", ({ node }) => {
       draggedNode = node;
       dragMoved = false;
       draggedSim = simRef.current?.nodes.find((n) => n.id === node);
+      // Dim the rest of the graph to the grabbed node's neighbourhood so the
+      // dragged star reads against a shaded background instead of other
+      // clusters' colours bleeding through as it passes over them.
+      highlight(node);
       if (!renderer.getCustomBBox()) renderer.setCustomBBox(renderer.getBBox());
       if (draggedSim) {
         draggedSim.fx = draggedSim.x;
@@ -210,6 +237,7 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
       event.original.stopPropagation();
     });
     const endDrag = (): void => {
+      if (!draggedNode) return; // upStage also fires on plain background clicks
       if (draggedSim) {
         draggedSim.fx = null;
         draggedSim.fy = null;
@@ -217,7 +245,11 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
       draggedNode = null;
       draggedSim = undefined;
       renderer.setCustomBBox(null);
-      simRef.current?.sim.alphaTarget(0);
+      clearHighlight();
+      // Reheat so the released node and its neighbours ease back to rest — the
+      // sim has usually cooled to alphaMin by release, so alphaTarget(0) alone
+      // would leave everything frozen wherever the drag dropped it.
+      simRef.current?.reheat(0.3);
     };
     renderer.on("upNode", endDrag);
     renderer.on("upStage", endDrag);
@@ -341,40 +373,55 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     };
   }, [uiTheme]);
 
-  // Timelapse — physics-free reveal of the already-settled graph, oldest file
-  // first. Hide every node, then un-hide in mtime order; sigma skips edges with
-  // a hidden endpoint, so the web fills in as nodes appear.
+  // Timelapse — replay the vault's growth in creation order with LIVE physics.
+  // The sim is reset to empty, then nodes are revealed oldest-first; each one
+  // spawns at the galactic centre and the running d3-force flings it outward,
+  // physically shoving the already-placed stars aside. The galaxy assembles and
+  // jostles itself into shape in real time rather than snapping to fixed spots.
+  // Rendering is driven by the sim's own ticks; this loop only paces reveals.
+  const REVEAL_MS = 18000; // total time to reveal every node
   const startTimelapse = (): void => {
     const renderer = sigmaRef.current;
-    if (!renderer) return;
-    const graph = renderer.getGraph();
-    if (graph.order === 0) return;
-    simRef.current?.stop();
+    const sim = simRef.current;
+    if (!renderer || !sim || renderer.getGraph().order === 0) return;
+    const graph = renderer.getGraph() as VaultGraph;
 
+    // Reveal order: mtime order, then any present node mtime didn't cover.
     const present = new Set(graph.nodes());
     const order = tlOrderRef.current.filter((p) => present.has(p));
     const seen = new Set(order);
     graph.forEachNode((n) => {
       if (!seen.has(n)) order.push(n);
     });
+
+    // Hide everything and empty the sim — the galaxy grows from nothing.
     graph.forEachNode((n) => graph.setNodeAttribute(n, "hidden", true));
+    sim.timelapseReset();
+    renderer.refresh({ skipIndexation: true });
     setTlPlaying(true);
 
-    const perFrame = Math.max(1, Math.ceil(order.length / (12 * 60)));
-    let i = 0;
+    let next = 0;
+    const start = performance.now();
     const step = (): void => {
       const r = sigmaRef.current;
-      if (!r) {
+      const sm = simRef.current;
+      if (!r || !sm) {
         tlRafRef.current = null;
         return;
       }
-      const g = r.getGraph();
-      for (let k = 0; k < perFrame && i < order.length; k++, i++) {
-        g.setNodeAttribute(order[i], "hidden", false);
+      const g = r.getGraph() as VaultGraph;
+      const now = performance.now() - start;
+      const want = Math.min(order.length, Math.ceil((now / REVEAL_MS) * order.length));
+      if (want > next) {
+        const batch = order.slice(next, want);
+        for (const id of batch) g.setNodeAttribute(id, "hidden", false);
+        sm.timelapseReveal(batch); // spawns at centre + keeps the sim hot
+        next = want;
       }
-      if (i < order.length) {
+      if (next < order.length) {
         tlRafRef.current = requestAnimationFrame(step);
       } else {
+        sm.timelapseSettle(); // reveal done — let the live galaxy cool to rest
         tlRafRef.current = null;
         setTlPlaying(false);
       }
@@ -382,15 +429,21 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     tlRafRef.current = requestAnimationFrame(step);
   };
 
+  // Pause — stop pacing and reveal everything that's left at once, then let the
+  // live sim settle the full galaxy (timelapseReveal skips already-shown nodes).
   const pauseTimelapse = (): void => {
     if (tlRafRef.current != null) {
       cancelAnimationFrame(tlRafRef.current);
       tlRafRef.current = null;
     }
     const renderer = sigmaRef.current;
-    if (renderer) {
-      const graph = renderer.getGraph();
+    const sim = simRef.current;
+    if (renderer && sim) {
+      const graph = renderer.getGraph() as VaultGraph;
       graph.forEachNode((n) => graph.setNodeAttribute(n, "hidden", false));
+      sim.timelapseReveal(graph.nodes());
+      sim.timelapseSettle();
+      renderer.refresh({ skipIndexation: true });
     }
     setTlPlaying(false);
   };

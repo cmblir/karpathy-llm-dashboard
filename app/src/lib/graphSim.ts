@@ -25,6 +25,10 @@ export interface SimNode {
   deg: number;
   fx?: number | null;
   fy?: number | null;
+  // Velocities — d3 owns these at runtime; we zero them when (re)spawning a
+  // node at the centre during the timelapse.
+  vx?: number;
+  vy?: number;
 }
 interface SimLink {
   source: SimNode | string;
@@ -43,6 +47,16 @@ export interface GraphSim {
   // Re-apply force parameters from changed sliders without rebuilding the sim,
   // then gently reheat so the layout eases to the new configuration.
   update(next: GraphSettings): void;
+  // --- Live timelapse: grow the simulation one cohort at a time. Only revealed
+  // nodes exert/feel forces, so each new star spawned at the centre physically
+  // shoves its neighbours outward as the galaxy assembles in real time. ---
+  // Empty the active set — the sim falls silent until the first reveal.
+  timelapseReset(): void;
+  // Spawn the given nodes at the centre and add them (plus any links to nodes
+  // already revealed) to the live sim, kept hot so they push outward.
+  timelapseReveal(ids: string[]): void;
+  // Reveal is done — let the live galaxy cool to rest.
+  timelapseSettle(): void;
   stop(): void;
 }
 
@@ -66,6 +80,15 @@ export function createSim(
     source: byId.get(src) as SimNode,
     target: byId.get(tgt) as SimNode,
   }));
+  // Links incident to each node — lets the timelapse add only the edges whose
+  // both endpoints are already revealed, without rescanning every edge.
+  const linksByNode = new Map<string, SimLink[]>();
+  for (const l of links) {
+    const a = (l.source as SimNode).id;
+    const b = (l.target as SimNode).id;
+    (linksByNode.get(a) ?? linksByNode.set(a, []).get(a)!).push(l);
+    (linksByNode.get(b) ?? linksByNode.set(b, []).get(b)!).push(l);
+  }
 
   // Per-link strength, degree-normalized (d3's native rule). A leaf (deg 1) on
   // a hub pulls at 1/2; two hubs (deg 30) pull each other at only 1/31, so
@@ -106,7 +129,14 @@ export function createSim(
     .alphaMin(0.002)
     .velocityDecay(0.45);
 
-  sim.on("tick", () => onTick(nodes));
+  // During a timelapse the sim runs over a growing subset; otherwise the full
+  // node set. onTick always reports the live set so positions render back.
+  let tlActive: SimNode[] | null = null;
+  sim.on("tick", () => onTick(tlActive ?? nodes));
+
+  // Timelapse growth state (null = not running a timelapse).
+  const activeIds = new Set<string>();
+  const activeLinks: SimLink[] = [];
 
   return {
     nodes,
@@ -123,7 +153,50 @@ export function createSim(
       yF.strength(centerOf(next));
       sim.alpha(0.3).alphaTarget(0).restart();
     },
+    timelapseReset() {
+      activeIds.clear();
+      activeLinks.length = 0;
+      tlActive = [];
+      linkF.links(activeLinks);
+      sim.nodes(tlActive).alpha(0).alphaTarget(0).stop();
+    },
+    timelapseReveal(ids) {
+      if (!tlActive) tlActive = [];
+      for (const id of ids) {
+        const n = byId.get(id);
+        if (!n || activeIds.has(id)) continue;
+        // Spawn at the centre (tiny jitter so a cohort doesn't perfectly stack)
+        // with zero velocity — the live charge force flings it outward, which
+        // is what shoves the already-placed neighbours aside.
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * 6;
+        n.x = Math.cos(a) * r;
+        n.y = Math.sin(a) * r;
+        n.vx = 0;
+        n.vy = 0;
+        n.fx = null;
+        n.fy = null;
+        // Seed the rendered position now so the node doesn't flash at its old
+        // settled spot for a frame before the first tick moves it.
+        graph.mergeNodeAttributes(id, { x: n.x, y: n.y });
+        activeIds.add(id);
+        tlActive.push(n);
+        for (const l of linksByNode.get(id) ?? []) {
+          const other = (l.source as SimNode).id === id ? l.target : l.source;
+          if (typeof other === "object" && activeIds.has(other.id))
+            activeLinks.push(l);
+        }
+      }
+      // Re-bind the growing sets and keep the sim hot (charge/link scale with
+      // alpha, so it must stay high for the push to read while nodes arrive).
+      linkF.links(activeLinks);
+      sim.nodes(tlActive).alpha(0.8).alphaTarget(0.1).restart();
+    },
+    timelapseSettle() {
+      sim.alphaTarget(0);
+    },
     stop() {
+      tlActive = null;
       sim.stop();
     },
   };
