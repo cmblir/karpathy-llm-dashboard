@@ -41,6 +41,9 @@ export interface GraphSim {
   nodes: SimNode[];
   sim: Simulation<SimNode, SimLink>;
   reheat(alpha: number): void;
+  // Re-apply force parameters from changed sliders without rebuilding the sim,
+  // then gently reheat so the layout eases to the new configuration.
+  update(next: GraphSettings): void;
   stop(): void;
 }
 
@@ -49,6 +52,7 @@ export function createSim(
   s: GraphSettings,
   onTick: (nodes: SimNode[]) => void,
 ): GraphSim {
+  let cur = s;
   const nodes: SimNode[] = graph.mapNodes((id, a) => ({
     id,
     x: a.x,
@@ -68,28 +72,28 @@ export function createSim(
   const linkStrength = (l: SimLink): number => {
     const sN = typeof l.source === "object" ? l.source.deg : 1;
     const tN = typeof l.target === "object" ? l.target.deg : 1;
-    return s.linkForce / (1 + Math.min(sN, tN));
+    return cur.linkForce / (1 + Math.min(sN, tN));
   };
+  const centerOf = (g: GraphSettings): number =>
+    Math.max(0.005, g.centerForce * CENTER_SCALE);
 
-  const center = Math.max(0.005, s.centerForce * CENTER_SCALE);
+  const linkF = forceLink<SimNode, SimLink>(links)
+    .id((d) => d.id)
+    .distance(s.linkDistance)
+    .strength(linkStrength)
+    .iterations(1);
+  const chargeF = forceManyBody<SimNode>()
+    .strength(-s.repelForce * REPEL_SCALE)
+    .theta(0.9)
+    .distanceMin(1); // distanceMax left at Infinity (uncapped) — no orphan ring
+  const xF = forceX<SimNode>(0).strength(centerOf(s));
+  const yF = forceY<SimNode>(0).strength(centerOf(s));
+
   const sim = forceSimulation<SimNode, SimLink>(nodes)
-    .force(
-      "link",
-      forceLink<SimNode, SimLink>(links)
-        .id((d) => d.id)
-        .distance(s.linkDistance)
-        .strength(linkStrength)
-        .iterations(1),
-    )
-    .force(
-      "charge",
-      forceManyBody<SimNode>()
-        .strength(-s.repelForce * REPEL_SCALE)
-        .theta(0.9)
-        .distanceMin(1), // distanceMax left at Infinity (uncapped) — no orphan ring
-    )
-    .force("x", forceX<SimNode>(0).strength(center))
-    .force("y", forceY<SimNode>(0).strength(center))
+    .force("link", linkF)
+    .force("charge", chargeF)
+    .force("x", xF)
+    .force("y", yF)
     .force(
       "collide",
       forceCollide<SimNode>((n) => n.size / 2 + 6)
@@ -109,6 +113,14 @@ export function createSim(
     // Gentle re-activation for interactive drag — tows neighbours, then cools.
     reheat(alpha) {
       sim.alpha(alpha).alphaTarget(0).restart();
+    },
+    update(next) {
+      cur = next;
+      linkF.distance(next.linkDistance).strength(linkStrength);
+      chargeF.strength(-next.repelForce * REPEL_SCALE);
+      xF.strength(centerOf(next));
+      yF.strength(centerOf(next));
+      sim.alpha(0.3).alphaTarget(0).restart();
     },
     stop() {
       sim.stop();

@@ -266,6 +266,29 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     settings.nodeSize,
   ]);
 
+  // Force sliders — re-tune the running sim in place (no rebuild), then ease.
+  useEffect(() => {
+    simRef.current?.update(settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    settings.centerForce,
+    settings.repelForce,
+    settings.linkForce,
+    settings.linkDistance,
+  ]);
+
+  // Display sliders — restyle without rebuilding the graph/sim.
+  useEffect(() => {
+    const renderer = sigmaRef.current;
+    if (!renderer) return;
+    renderer.setSettings(buildSigmaSettings(readTheme(), settings));
+    const graph = renderer.getGraph();
+    const w = Math.max(0.2, 0.6 * settings.linkThickness);
+    graph.forEachEdge((e) => graph.setEdgeAttribute(e, "size", w));
+    renderer.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.linkThickness, settings.textFadeThreshold, settings.arrows]);
+
   // Timelapse — physics-free reveal of the already-settled graph, oldest file
   // first. Hide every node, then un-hide in mtime order; sigma skips edges with
   // a hidden endpoint, so the web fills in as nodes appear.
