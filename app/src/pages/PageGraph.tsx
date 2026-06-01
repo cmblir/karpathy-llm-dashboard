@@ -124,6 +124,38 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
 
     renderer.on("clickNode", ({ node }) => setRoute(`page:${node}`));
 
+    // Hover: brighten the hovered node's closed neighbourhood, dim the rest —
+    // Obsidian dims non-neighbours rather than erasing them, so context stays.
+    let hoveredNode: string | undefined;
+    let hoveredNeighbors: Set<string> | undefined;
+    renderer.on("enterNode", ({ node }) => {
+      hoveredNode = node;
+      hoveredNeighbors = new Set(graph.neighbors(node));
+      hoveredNeighbors.add(node);
+      renderer.refresh({ skipIndexation: true });
+    });
+    renderer.on("leaveNode", () => {
+      hoveredNode = undefined;
+      hoveredNeighbors = undefined;
+      renderer.refresh({ skipIndexation: true });
+    });
+    renderer.setSetting("nodeReducer", (n, data) => {
+      if (!hoveredNeighbors) return data;
+      if (hoveredNeighbors.has(n)) {
+        return n === hoveredNode
+          ? { ...data, highlighted: true, forceLabel: true, zIndex: 1 }
+          : { ...data, forceLabel: true, zIndex: 1 };
+      }
+      return { ...data, color: theme.nodeUnresolved, label: "" };
+    });
+    renderer.setSetting("edgeReducer", (e, data) => {
+      if (!hoveredNode) return data;
+      const [a, b] = graph.extremities(e);
+      return a === hoveredNode || b === hoveredNode
+        ? { ...data, color: theme.edgeHi, zIndex: 1 }
+        : data;
+    });
+
     // Camera framing: keep the spreading disk in view during the settle, then
     // nail the final framing on the sim's "end". A user wheel/drag hands the
     // camera over so the settle never fights manual pan/zoom.
