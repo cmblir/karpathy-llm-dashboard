@@ -41,6 +41,7 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   const fileTree = useVaultStore((s) => s.fileTree);
   const currentVault = useVaultStore((s) => s.currentVault);
   const setRoute = useUIStore((s) => s.setRoute);
+  const uiTheme = useUIStore((s) => s.theme);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sigmaRef = useRef<Sigma | null>(null);
@@ -54,6 +55,9 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tlPlaying, setTlPlaying] = useState(false);
+  // Bumped on webglcontextrestored to force a clean renderer rebuild (sigma has
+  // no built-in GL-context recovery; WKWebView drops the context on backgrounding).
+  const [glEpoch, setGlEpoch] = useState(0);
   const [counts, setCounts] = useState<{ nodes: number; edges: number }>({
     nodes: 0,
     edges: 0,
@@ -121,6 +125,17 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
 
     const renderer = new Sigma(graph, container, buildSigmaSettings(theme, s));
     sigmaRef.current = renderer;
+
+    // WKWebView drops the WebGL context when backgrounded / under memory
+    // pressure, leaving a blank canvas. sigma has no recovery, so on restore we
+    // bump glEpoch → this effect tears down and rebuilds a fresh renderer.
+    const canvases = Object.values(renderer.getCanvases());
+    const onCtxLost = (e: Event): void => e.preventDefault();
+    const onCtxRestored = (): void => setGlEpoch((n) => n + 1);
+    for (const cv of canvases) {
+      cv.addEventListener("webglcontextlost", onCtxLost);
+      cv.addEventListener("webglcontextrestored", onCtxRestored);
+    }
 
     renderer.on("clickNode", ({ node }) => setRoute(`page:${node}`));
 
@@ -247,6 +262,10 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
       window.clearTimeout(revealTimer);
       container.removeEventListener("wheel", takeOver);
       container.removeEventListener("pointerdown", takeOver);
+      for (const cv of canvases) {
+        cv.removeEventListener("webglcontextlost", onCtxLost);
+        cv.removeEventListener("webglcontextrestored", onCtxRestored);
+      }
       sim.stop();
       renderer.kill();
       sigmaRef.current = null;
@@ -264,6 +283,7 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     settings.existingOnly,
     settings.showOrphans,
     settings.nodeSize,
+    glEpoch,
   ]);
 
   // Force sliders — re-tune the running sim in place (no rebuild), then ease.
@@ -288,6 +308,34 @@ export default function PageGraph({ t }: { t: Strings }): JSX.Element {
     renderer.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.linkThickness, settings.textFadeThreshold, settings.arrows]);
+
+  // Theme toggle — recolour nodes/edges + restyle. Re-read AFTER the app's
+  // theme effect has flipped --bg (rAF + a slow-start safety timeout), or the
+  // first read sees the old palette and paints invisible nodes.
+  useEffect(() => {
+    const apply = (): void => {
+      const r = sigmaRef.current;
+      if (!r) return;
+      const theme = readTheme();
+      r.setSettings(buildSigmaSettings(theme, settingsRef.current));
+      const graph = r.getGraph();
+      graph.forEachNode((n, a) =>
+        graph.setNodeAttribute(
+          n,
+          "color",
+          a.unresolved ? theme.nodeUnresolved : theme.node,
+        ),
+      );
+      graph.forEachEdge((e) => graph.setEdgeAttribute(e, "color", theme.edge));
+      r.refresh();
+    };
+    const raf = requestAnimationFrame(apply);
+    const safety = window.setTimeout(apply, 300);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(safety);
+    };
+  }, [uiTheme]);
 
   // Timelapse — physics-free reveal of the already-settled graph, oldest file
   // first. Hide every node, then un-hide in mtime order; sigma skips edges with
